@@ -1,0 +1,66 @@
+Nota: cada linha de codigo é separado por \n
+Nota: Em fortan usa-se sempre maiusculas para todos os statementes
+
+Tipos de variaveis:
+Nome em Fortan -> tipo normal
+INTEGER -> inteiro
+Real -> float
+Double precision -> double
+Complex -> tuplo de floats
+Logical -> boleano
+Character -> Conjunto de caracteres, ou seja, string
+
+
+Estrutura de certos valores:
+valor -> significado
+.TRUE. -> verdadeiro
+.FALSE. -> falso
+.LE. -> less or equal
+.EQ. -> equals
+.AND. -> &&
+
+
+
+
+Statements:
+Nota: os statements apenas podem usar as colunas 7-72
+
+TIPO NOME(x) -> define um array de x elementos do tipo 'TIPO' e da o nome 'NOME'
+
+'uma string' -> Isto é a string "uma string", em vez dos '' podem ser usadas ""
+
+PROGRAM NOME -> Marca o inicio de um programa com o nome "NOME", as maiusculas devem ser preservadas
+END -> Marca o fim do programa associado
+
+PRINT *, 'uma string', valor -> funcao que faz print da string "uma string" e valor concatenados(este ultimo é opcional e podem estes dois ser repetidos as vezes que quisermos, mas sempre separados por virgulas) no ecra, * significa o standard output(ou seja ecra)
+READ *, N -> funcao que le o input do standard input (ou seja o input do terminal) e atribui a variavel N (esta pode ser uma variavel normal ou um array)
+
+NOME = valor -> isto serve para atribuir um valor a variavel NOME, este valor tem de ser do tipo da variavel
+
+nota: este exemplo ja contem os espacamentos iniciais corretos (isto é basicamnte um for, por omissao o incremento é de 1)
+      DO label NOME_DA_VARIAVEL = valor_inicial, valor_final
+         statementes
+label CONTINUE
+
+Nota: a funcao fica dentro do PROGRAM e nao tem identacao a nao ser que o proprio statement usado dentro e fora o exija
+TIPO FUNCTION NOME(N, B) -> definicao de uma funcao do tipo tipo e com nome NOME e que recebe os argumentos N e B(podem ter mais ou menos argumentos)
+TIPO N, B -> so depois da definicao da funcao é que se atribui o tipo aos argumentos da funcao
+statements
+NOME = valor -> atribui o valor 'valor' a variavel de retorno da funcao NOME
+RETURN -> retorna o valor atribuido a variavel de retorno da funcao associada
+
+MOD(VAL1, VAL2) -> retorna o resto da divisao de VAL1 por VAL2, ambos os VAL tem de ser inteiro (requer verificacao)
+
+
+IF condicao THEN
+      statements
+ENDIF
+
+GOTO label -> volta para a linha que tem essa label
+
+
+
+Nota para depois:
+se nao for definido um tipo, o nome de uma variavel comecar por  I, J, K, L, M, or N (uppercase or lowercase) entao o compilador deve assumir que é um inteiro, senao é um real
+
+
