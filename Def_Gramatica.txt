@@ -1,0 +1,110 @@
+literals = "()\n,\t"
+tokens = (PROGRAM, ID, END, FUNCTION, INTEGER, INTVAL, REAL, REALVAL, 
+DOUBLEPRECISION, DOUBLEPRECISIONVAL, COMPLEX, COMPLEXVAL, DOUBLECOMPLEX, 
+DOUBLECOMPLEXVAL, LOGICAL, LOGICALVAL, CHARACTER, CHARACTERVAL, HOLLERITH, 
+HOLLERITHVAL, PRINT, READ, WRITE, DO, MOD, IF, THEN, ELSE, ENDIF, GOTO, 
+CONTINUE)
+S0 = Main
+
+
+Quartas
+p1: Main -> Functions PROGRAM ID\n Declaritions Statements END\n Functions
+p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions Statements END\n Functions
+p3:            | Vazio
+p4: FunctionType -> INTEGER
+        | REAL
+        | DOUBLE PRECISION
+        | COMPLEX
+        | DOUBLE COMPLEX
+        | LOGICAL
+        | CHARACTER
+        | HOLLERITH
+        | Vazio
+p4: VarType -> INTEGER
+        | REAL
+        | DOUBL EPRECISION
+        | COMPLEX
+        | DOUBLECOMPLEX
+        | LOGICAL
+        | CHARACTER
+        | HOLLERITH
+p6: Val -> INTVAL
+        | REALVAL
+        | COMPLEXVAL
+        | DOUBLECOMPLEXVAL
+        | LOGICALVAL
+        | CHARACTERVAL
+        | HOLLERITHVAL
+        | ID
+p4: ArgumentList -> ID ArgumentRestList
+        | Vazio
+p4: ArgumentRestList -> , ID ArgumentRestList
+        | Vazio
+
+
+
+Luis
+p1: Declarations -> Declaration Declarations 
+        | Vazio
+p5: Declaration -> VarType ArrayIdList\n
+p5: ArraySize -> (INTVAL)
+        | Vazio
+p6: ArrayIdList -> ID ArraySize ArrayIdListRest
+p7: ArrayIdListRest -> ,ID ArraySize ArrayIdListRest
+        |Vazio 
+
+p7: IDS -> ,ID ArraySize IDS
+        | Vazio
+p5: Statements -> Label Statement
+
+
+
+
+Lucas
+p5: Statement -> Atributions\n Statements
+        | Print\n Statements
+        | Read\n Statements
+        | Write\n Statements
+        | Do\n Statements
+        | Mod\n Statements
+        | If\n Statements
+        | Goto\n Statements
+        | Return\n Statements
+        | Continue\n Statements
+        | Vazio
+p5: Atribution -> ID PosArray = VAL
+p5: PosArray -> (Pos)
+        | Vazio
+p5: Pos -> INTVAL 
+        | ID
+
+p6: Mod -> MOD(SameTypePair)
+p6: SameTypePair -> INTVAL, INTVAL
+                  | REALVAL, REALVAL
+
+                  | COMPLEVALX, COMPLEVALX
+                  |ID, ID 
+
+p6: Continue -> Label CONTINUE
+p6: Label -> INTVAL\t
+        | \t
+
+
+
+
+
+
+
+
+
+
+VER melhor estes abaixo
+
+p6: Do -> DO 
+p6: If -> IF
+p6: Print -> PRINT Format IoList
+        | PRINT Grname
+p6: Read -> READ Fn Format Ios Rn StatLabel Iolist
+        | READ Grname
+p7: IoList -> ,Val IoList 
+        |Vazio 
