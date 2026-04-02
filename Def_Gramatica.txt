@@ -8,8 +8,8 @@ S0 = Main
 
 
 Quartas
-p1: Main -> Functions PROGRAM ID\n Declaritions Statements END\n Functions
-p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions Statements END\n Functions
+p1: Main -> Functions PROGRAM ID\n Declaritions LabeledStatements END\n Functions
+p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n Functions
 p3:            | Vazio
 p4: FunctionType -> INTEGER
         | REAL
@@ -53,25 +53,24 @@ p6: ArrayIdList -> ID ArraySize ArrayIdListRest
 p7: ArrayIdListRest -> ,ID ArraySize ArrayIdListRest
         |Vazio 
 
-p7: IDS -> ,ID ArraySize IDS
+
+p5: LabeledStatements -> Label Statement \n LabeledStatements
         | Vazio
-p5: Statements -> Label Statement
 
 
 
 
 Lucas
-p5: Statement -> Atributions\n Statements
-        | Print\n Statements
-        | Read\n Statements
-        | Write\n Statements
-        | Do\n Statements
-        | Mod\n Statements
-        | If\n Statements
-        | Goto\n Statements
-        | Return\n Statements
-        | Continue\n Statements
-        | Vazio
+p5: Statement -> Atributions
+        | Print
+        | Read
+        | Write
+        | Do
+        | Mod
+        | If
+        | Goto
+        | Return
+        | Continue
 p5: Atribution -> ID PosArray = VAL
 p5: PosArray -> (Pos)
         | Vazio

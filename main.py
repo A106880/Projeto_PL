@@ -31,6 +31,30 @@ class Funcao(Node):
     def __repr__(self):
         return f"Funcao({self.nome})"
 
+
+class Declaracao(Node):
+    def __init__(self, tipo, ArrayIdList):
+        super().__init__()
+        self.tipo = tipo
+        self.Ids = ArrayIdList
+    
+    def __repr__(self):
+        str = f"Declaracao({self.tipo}"
+        for elem in self.ArrayIdList:
+            str = str + f"{elem.nome}[{elem.tamanho}] / "
+        return str + ")"
+
+
+
+class ArrayId(Node):
+    def __init__(self,nome,tamanho):
+        super().__init__()
+        self.nome = nome
+        if(tamanho == None):
+            self.tamanho = 0 # ou 1 caso se queira fazer singleton == array de 1 elemento 
+        self.tamanho = tamanho
+
+
 class LexError(Exception):
     pass
 
@@ -258,6 +282,66 @@ def p_argument_rest_list(p):
         p[0] = [p[2]] + p[3]
     else:
         p[0] = []
+
+
+#p34: Declarations -> Declaration Declarations 
+#p35:        | Vazio
+def p_Declarations(p):
+    """Declarations : Declaration Declarations"
+                    | empty"""
+    
+    if len(p) > 2:
+        p[0] = [p[1]] + p[2] 
+    else:
+        p[0] = []
+
+#p36: Declaration -> VarType ArrayIdList\n
+def p_Declaration(p):
+    "Declaration : VarType ArrayIdList"
+    nova_declaracao = Declaracao(p[1],p[2])
+    p[0] = nova_declaracao
+
+
+
+
+#p37: ArrayIdList -> ID ArraySize ArrayIdListRest
+def p_ArrayIdList(p):
+    "ArrayIdList : ID ArraySize ArrayIdListRest"
+    p[0] = [ArrayId(p[1],p[2])] + p[3]
+
+
+#p38: ArrayIdListRest -> ,ID ArraySize ArrayIdListRest
+#p39:        |Vazio 
+def p_ArrayIdListRest(p): 
+    """ ArrayIdListRest : ',' ID ArraySize ArrayIDListRest
+                        | empty"""
+    if len(p) > 2:
+        p[0] = [ArrayId(p[2],p[3])] + p[4]
+    else:
+        p[0] = []
+
+#p40: ArraySize -> (INTVAL)
+#p41:        | Vazio
+def p_ArraySize(p):
+    """ ArraySize : '(' INTVAL ')'
+                  | empty """
+    if len(p) > 2:
+        p[0] = p[2]
+    else:
+        p[0] = None
+
+
+
+#p42: Statements -> Label Statement \n Statements
+#p43:                | Vazio
+def p_Statements(p):
+    """Statements : Label Statement '\n' Statements
+                  | empty"""
+    if len(p) > 2:
+        p[0] = [(p[1],p[2])] + p[4]
+    else:
+        p[0] = []
+
 
 def p_error(p):
     if p:
