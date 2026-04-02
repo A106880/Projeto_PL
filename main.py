@@ -1,10 +1,72 @@
 import ply.lex as lex
+import ply.yacc as yacc
+
+class Node:
+    """Classe base genérica para todos os nós da AST."""
+    def __init__(self):
+        self.lineno = None
+
+class ProgramaPrincipal(Node):
+    def __init__(self, funcoes_cima, nome, declaracoes, comandos, funcoes_baixo):
+        super().__init__()
+        self.tipo_no = 'PROGRAMA_PRINCIPAL'
+        self.funcoes_cima = funcoes_cima
+        self.nome = nome
+        self.declaracoes = declaracoes
+        self.comandos = comandos
+        self.funcoes_baixo = funcoes_baixo
+
+    def __repr__(self):
+        return f"Programa({self.nome})"
+
+class Funcao(Node):
+    def __init__(self, tipo_retorno, nome, argumentos, declaracoes, comandos):
+        super().__init__()
+        self.tipo_retorno = tipo_retorno
+        self.nome = nome
+        self.argumentos = argumentos
+        self.declaracoes = declaracoes
+        self.comandos = comandos
+        
+    def __repr__(self):
+        return f"Funcao({self.nome})"
 
 class LexError(Exception):
     pass
 
-literals = "()\n,\t"
-tokens = ('PROGRAM', 'ID', 'END', 'FUNCTION', 'INTEGER', 'INTVAL', 'REAL', 'REALVAL', 'DOUBLEPRECISION', 'DOUBLEPRECISIONVAL', 'COMPLEX', 'COMPLEXVAL', 'DOUBLECOMPLEX', 'DOUBLECOMPLEXVAL', 'LOGICAL', 'LOGICALVAL', 'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ', 'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE')
+literals = "(),\t"
+tokens = (
+    'NEWLINE', 'PROGRAM', 'ID', 'END', 'FUNCTION', 'INTEGER', 'INTVAL', 
+    'REAL', 'REALVAL', 'DOUBLEPRECISION', 'DOUBLEPRECISIONVAL', 'COMPLEX', 
+    'COMPLEXVAL', 'DOUBLECOMPLEX', 'DOUBLECOMPLEXVAL', 'LOGICAL', 'LOGICALVAL', 
+    'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ', 
+    'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE'
+)
+
+reserved = {
+    'PROGRAM': 'PROGRAM', 
+    'END': 'END', 
+    'FUNCTION': 'FUNCTION', 
+    'INTEGER': 'INTEGER', 
+    'REAL': 'REAL', 
+    'DOUBLEPRECISION': 'DOUBLEPRECISION',
+    'COMPLEX': 'COMPLEX', 
+    'DOUBLECOMPLEX': 'DOUBLECOMPLEX', 
+    'LOGICAL': 'LOGICAL', 
+    'CHARACTER': 'CHARACTER', 
+    'HOLLERITH': 'HOLLERITH', 
+    'PRINT': 'PRINT', 
+    'READ': 'READ', 
+    'WRITE': 'WRITE', 
+    'DO': 'DO', 
+    'MOD': 'MOD', 
+    'IF': 'IF', 
+    'THEN': 'THEN', 
+    'ELSE': 'ELSE', 
+    'ENDIF': 'ENDIF', 
+    'GOTO': 'GOTO', 
+    'CONTINUE': 'CONTINUE'
+}
 
 def t_INTVAL(t):
     r'\d+'
@@ -22,9 +84,11 @@ def t_REALVAL(t):
     return t
 
 def t_COMPLEXVAL(t):
+    r'COMPLEXVAL_PLACEHOLDER'
     pass
 
 def t_DOUBLECOMPLEXVAL(t):
+    r'DOUBLECOMPLEXVAL_PLACEHOLDER'
     pass
 
 def t_LOGICALVAL(t):
@@ -39,6 +103,7 @@ def t_CHARACTERVAL(t):
 
 
 def t_HOLLERITHVAL(t):
+    r'HOLLERITHVAL_PLACEHOLDER'
     pass
 
 
@@ -72,100 +137,46 @@ def t_ID(t):
     t.type = reserved.get(t.value.upper(), 'ID')
     return t
 
-t_ignore = ' \t\n'
+t_ignore = ' \t'
 
 def t_COMMENT(t):
     r'(^[Cc*].*)|(!.*)'
     pass
 
 
-def t_newline(t):
+def t_NEWLINE(t):
     r'\n+'
     t.lexer.lineno += len(t.value)
+    t.type = 'NEWLINE'
+    return t
 
 def t_error(t):
     raise LexError(f"Illegal character {t.value[0]}")
 
-
-__file__ = "Untitled.ipynb"
 lexer = lex.lex()
 
-
-_lookahead = None
-
-
-def next_token():
-    global _lookahead
-    _lookahead = lexer.token()
-
-
-def lookahead():
-    return (_lookahead.type, _lookahead.value, _lookahead.lineno, _lookahead.lexpos) if _lookahead else ('$', None, None, None)
-
-
-class ParserError(Exception):
-    pass
-
-
-def recognize_terminal(expected_type):
-    token_type, token_val, token_line, token_pos = lookahead()
-
-
-    if(token_type == expected_type):
-        next_token()
-        return token_val
-    else:
-        raise ParserError(f'Unexpected token when recognizing terminal {expected_type}: {token_type}')
-
-
-
-
-
 # p1: Main -> Functions PROGRAM ID\n Declaritions Statements END\n Functions
-def recognize_Main():
-    token_type, token_val, token_line, token_pos = lookahead()
-
-    first_main = ['FUNCTION', 'PROGRAM', 'INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX', 'LOGICAL', 'CHARACTER', 'HOLLERITH']
-
-    if token_type in first_main:
-        recognize_Functions()
-        recognize_terminal('PROGRAM')
-        recognize_terminal('ID')
-        recognize_terminal('\n')
-        recognize_Declarations()
-        recognize_Statements()
-        recognize_terminal('END')
-        recognize_terminal('\n')
-        recognize_Functions()
-    else:
-        raise ParserError(f'Unexpected token when recognizing nonterminal \'Main\': {token_type}')
+def p_main(p):
+    '''Main : Functions PROGRAM ID NEWLINE Declarations Statements END NEWLINE Functions'''
     
+    p[0] = ProgramaPrincipal(
+        funcoes_cima=p[1],
+        nome=p[3],
+        declaracoes=p[5],
+        comandos=p[6],
+        funcoes_baixo=p[9]
+    ) 
 
 # p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions Statements END\n Functions
 # p3:            | Vazio
-def recognize_Functions():
-    token_type, token_val, token_line, token_pos = lookahead()
-
-    first_functions = ['FUNCTION', 'INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX', 'LOGICAL', 'CHARACTER', 'HOLLERITH']
-    follow_functions = ['PROGRAM', '$']
-
-    if token_type in first_functions:
-        recognize_FunctionType()
-        recognize_terminal('FUNCTION')
-        recognize_terminal('ID')
-        recognize_terminal('(')
-        recognize_ArgumentList()
-        recognize_terminal(')')
-        recognize_terminal('\n')
-        recognize_Declarations()
-        recognize_Statements()
-        recognize_terminal('END')
-        recognize_terminal('\n')
-        recognize_Functions()
-    elif token_type in follow_functions:
-        pass
+def p_functions(p):
+    '''Functions : FunctionType FUNCTION ID '(' ArgumentList ')' NEWLINE Declarations Statements END NEWLINE Functions
+                 | empty'''
+    if len(p) > 2:
+        nova_funcao = Funcao(tipo_retorno=p[1], nome=p[3], argumentos=p[5], declaracoes=p[8], comandos=p[9])
+        p[0] = [nova_funcao] + (p[12] if p[12] else [])
     else:
-        raise ParserError(f'Unexpected token when recognizing nonterminal \'Functions\': {token_type}')
+        p[0] = []
     
 # p4: FunctionType -> INTEGER
 # p5:     | REAL
@@ -176,18 +187,17 @@ def recognize_Functions():
 # p10:     | CHARACTER
 # p11:     | HOLLERITH
 # p12:     | Vazio
-def recognize_FunctionType():
-    token_type, token_val, token_line, token_pos = lookahead()
-
-    first_functionType = ['INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX', 'LOGICAL', 'CHARACTER', 'HOLLERITH']
-    follow_functionType = ['FUNCTION']
-
-    if token_type in first_functionType:
-        recognize_terminal(token_type)
-    elif token_type in follow_functionType:
-        pass
-    else:
-        raise ParserError(f'Unexpected token when recognizing nonterminal \'FunctionType\': {token_type}')
+def p_function_type(p):
+    '''FunctionType : INTEGER
+                    | REAL
+                    | DOUBLEPRECISION
+                    | COMPLEX
+                    | DOUBLECOMPLEX
+                    | LOGICAL
+                    | CHARACTER
+                    | HOLLERITH
+                    | empty'''
+    p[0] = p[1] if len(p) > 1 else None
     
 # p13: VarType -> INTEGER
 # p14:     | REAL
@@ -197,15 +207,16 @@ def recognize_FunctionType():
 # p18:     | LOGICAL
 # p19:     | CHARACTER
 # p20:     | HOLLERITH
-def recognize_VarType():
-    token_type, token_val, token_line, token_pos = lookahead()
-
-    first_VarType = ['INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX', 'LOGICAL', 'CHARACTER', 'HOLLERITH']
-
-    if token_type in first_VarType:
-        recognize_terminal(token_type)
-    else:
-        raise ParserError(f'Unexpected token when recognizing nonterminal \'VarType\': {token_type}')
+def p_var_type(p):
+    '''VarType : INTEGER
+               | REAL
+               | DOUBLEPRECISION
+               | COMPLEX
+               | DOUBLECOMPLEX
+               | LOGICAL
+               | CHARACTER
+               | HOLLERITH'''
+    p[0] = p[1]
 
 # p21: Val -> INTVAL
 # p22:     | REALVAL
@@ -216,45 +227,46 @@ def recognize_VarType():
 # p27:     | CHARACTERVAL
 # p28:     | HOLLERITHVAL
 # p29:     | ID
-def recognize_Val():
-    token_type, token_val, token_line, token_pos = lookahead()
-
-    first_Val = ['ID', 'INTVAL', 'REALVAL', 'DOUBLEPRECISIONVAL', 'COMPLEXVAL', 'DOUBLECOMPLEXVAL', 'LOGICALVAL', 'CHARACTERVAL', 'HOLLERITHVAL']
-
-    if token_type in first_Val:
-        recognize_terminal(token_type)
-    else:
-        raise ParserError(f'Unexpected token when recognizing nonterminal \'Val\': {token_type}')
+def p_val(p):
+    '''Val : INTVAL
+           | REALVAL
+           | DOUBLEPRECISIONVAL
+           | COMPLEXVAL
+           | DOUBLECOMPLEXVAL
+           | LOGICALVAL
+           | CHARACTERVAL
+           | HOLLERITHVAL
+           | ID'''
+    p[0] = p[1]
     
 # p30: ArgumentList -> ID ArgumentRestList
 # p31:     | Vazio
-def recognize_ArgumentList():
-    token_type, token_val, token_line, token_pos = lookahead()
-
-    first_argumentList = ['ID']
-    follow_argumentList = [')']
-
-    if token_type in first_argumentList:
-        recognize_terminal('ID')
-        recognize_ArgumentList()
-    elif token_type in follow_argumentList:
-        pass
+def p_argument_list(p):
+    '''ArgumentList : ID ArgumentRestList
+                    | empty'''
+    if len(p) > 2:
+        p[0] = [p[1]] + p[2] # Junta o primeiro argumento com o resto da lista
     else:
-        raise ParserError(f'Unexpected token when recognizing nonterminal \'ArgumentList\': {token_type}')
+        p[0] = []
     
 # p32: ArgumentRestList -> , ID ArgumentRestList
 # p33:     | Vazio
-def recognize_ArgumentRestList():
-    token_type, token_val, token_line, token_pos = lookahead()
-
-    first_argumentRestList = [',']
-    follow_argumentRestList = [')']
-
-    if token_type in first_argumentRestList:
-        recognize_terminal(',')
-        recognize_terminal('ID')
-        recognize_ArgumentRestList()
-    elif token_type in follow_argumentRestList:
-        pass
+def p_argument_rest_list(p):
+    '''ArgumentRestList : ',' ID ArgumentRestList
+                        | empty'''
+    if len(p) > 2:
+        p[0] = [p[2]] + p[3]
     else:
-        raise ParserError(f'Unexpected token when recognizing nonterminal \'ArgumentRestList\': {token_type}')
+        p[0] = []
+
+def p_error(p):
+    if p:
+        print(f"Erro de sintaxe próximo a '{p.value}' na linha {p.lineno}")
+    else:
+        print("Erro de sintaxe no final do ficheiro (Inesperado End Of File)")
+
+def p_empty(p):
+    'empty :'
+    pass
+
+parser = yacc.yacc()
