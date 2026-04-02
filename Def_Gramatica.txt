@@ -40,6 +40,17 @@ p4: ArgumentList -> ID ArgumentRestList
         | Vazio
 p4: ArgumentRestList -> , ID ArgumentRestList
         | Vazio
+p6: Print -> PRINT Format IoList
+        | PRINT Grname
+p7: IoList -> ,Val IoList 
+        |Vazio 
+/////VER COMO FAZER CHAMADA A FUNCOES
+p6: Read -> READ Fn Format Ios Rn StatLabel Iolist  /////VER MELHOR ISTO POS O READ FUNCIONA DE MANEIRA SEMELHANTE AO PRINT
+        | READ Grname
+Write
+
+
+
 
 
 
@@ -52,10 +63,12 @@ p5: ArraySize -> (INTVAL)
 p6: ArrayIdList -> ID ArraySize ArrayIdListRest
 p7: ArrayIdListRest -> ,ID ArraySize ArrayIdListRest
         |Vazio 
-
-
 p5: LabeledStatements -> Label Statement \n LabeledStatements
         | Vazio
+SUBROUTINE e CALL
+///// VER DEFINICAO DE ACESSOS A ARRAYS (LEMBRAR QUE PODEM SER FEITOS COM EXPRESSOES, INTVAL e VARIAVEIS)
+Main -> ProgramUnit Main | Vazio 
+ProgramUnint -> Program | Function | Subroutine
 
 
 
@@ -72,6 +85,7 @@ p5: Statement -> Atributions
         | Return
         | Continue
 p5: Atribution -> ID PosArray = VAL
+///// VER AS ATRIBUICIES DE EXPRESSOES
 p5: PosArray -> (Pos)
         | Vazio
 p5: Pos -> INTVAL 
@@ -87,23 +101,9 @@ p6: SameTypePair -> INTVAL, INTVAL
 p6: Continue -> Label CONTINUE
 p6: Label -> INTVAL\t
         | \t
-
-
-
-
-
-
-
-
-
-
-VER melhor estes abaixo
-
+GOTO
 p6: Do -> DO 
 p6: If -> IF
-p6: Print -> PRINT Format IoList
-        | PRINT Grname
-p6: Read -> READ Fn Format Ios Rn StatLabel Iolist
-        | READ Grname
-p7: IoList -> ,Val IoList 
-        |Vazio 
+
+
+
