@@ -151,7 +151,7 @@ class LabeledStatement(Node):
         self.statement = statement
 
     def __repr__(self):
-        return f"{[{self.label}]if self.label!=None else ""} {self.statement}"
+        return f"{[{self.label}]if self.label!=None else ''} {self.statement}"
 
 class LexError(Exception):
     pass
@@ -506,7 +506,7 @@ def p_statement(p):
 def p_atribution(p):
     '''Atribution : ID PosArray '=' Val'''
     p[0] = Assignment(
-        varName=p[1],
+        name=p[1],
         index=p[2] if p[2] else None,
         value=p[4]
     )
@@ -532,7 +532,8 @@ def p_pos(p):
 #p: Mod -> MOD(SameTypePair)
 def p_mod(p):
     '''Mod : MOD '(' SameTypePair ')' '''
-    p[0] = Mod(p[3])
+    left, right = p[3]
+    p[0] = Mod(left, right)
 
 #p: SameTypePair -> INTVAL, INTVAL
 #p                  | REALVAL, REALVAL
