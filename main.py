@@ -54,6 +54,47 @@ class ArrayId(Node):
             self.tamanho = 0 # ou 1 caso se queira fazer singleton == array de 1 elemento 
         self.tamanho = tamanho
 
+class Statement(Node): #Representa uma ação
+    pass
+
+class Assignment(Statement):
+    def __init__(self, name, index, value):
+        super().__init__()
+        self.name = name        # nome
+        self.index = index      # None ou índice no array
+        self.value = value      # expressão (valor)
+
+    def __repr__(self):
+        return f"{self.name}{''if self.index is None else f'[{self.index}]'} = {self.value}"
+
+class Continue(Statement):
+    def __init__(self, label):
+        super().__init__()
+        self.label = label  #label a acompanhar o continue
+    
+    def __repr__(self):
+        return f"[{self.label}]CONTINUE"
+
+class Expression(Node): #Representa um valor
+    pass
+
+class Mod(Expression):
+    def __init__(self, left, right):
+        super().__init__()
+        self.left = left
+        self.right = right
+
+    def __repr__(self):
+        return f"MOD({self.left}, {self.right})"
+
+class LabeledStatement(Node):
+    def __init__(self, label, statement):
+        super().__init__()
+        self.label = label      # int ou None
+        self.statement = statement
+
+    def __repr__(self):
+        return f"[{self.label}] {self.statement}"
 
 class LexError(Exception):
     pass
@@ -334,14 +375,95 @@ def p_ArraySize(p):
 
 #p42: Statements -> Label Statement \n Statements
 #p43:                | Vazio
-def p_Statements(p):
-    """Statements : Label Statement '\n' Statements
-                  | empty"""
+#p: LabeledStatements -> Label Statement \n LabeledStatements
+#p                   | Vazio
+def p_labeled_statements(p):
+    '''LabeledStatements : Label Statement NEWLINE LabeledStatements
+                         | empty'''
     if len(p) > 2:
-        p[0] = [(p[1],p[2])] + p[4]
+        stmt = LabeledStatement(p[1], p[2])
+        p[0] = [stmt] + p[4]
     else:
         p[0] = []
 
+#p: Statement -> Atributions
+#p        | Print
+#p        | Read
+#p        | Write
+#p        | Do
+#p        | Mod
+#p        | If
+#p        | Goto
+#p        | Continue
+def p_statement(p):
+    '''Statement : Atributions
+                 | Print
+                 | Read
+                 | Write
+                 | Do
+                 | Mod
+                 | If
+                 | Goto
+                 | Continue'''
+    p[0] = p[1]
+    
+#p: Atribution -> ID PosArray = VAL
+def p_atribution(p):
+    '''Atribution : ID PosArray '=' Val'''
+    p[0] = Assignment(
+        varName=p[1],
+        index=p[2] if p[2] else None,
+        value=p[4]
+    )
+
+#p: PosArray -> (Pos)
+#p        | Vazio
+def p_pos_array(p):
+    '''PosArray : '(' Pos ')'
+                | empty'''
+    if len(p) > 2:
+        p[0] = p[2]
+    else:
+        p[0] = []
+    
+#p: Pos -> INTVAL 
+#p        | ID
+def p_pos(p):
+    '''Pos : INTVAL
+           | ID'''
+    p[0] = p[1]
+
+#p: Mod -> MOD(SameTypePair)
+def p_mod(p):
+    '''Mod : MOD '(' SameTypePair ')' '''
+    p[0] = Mod(p[3])
+
+#p: SameTypePair -> INTVAL, INTVAL
+#p                  | REALVAL, REALVAL
+#p                  | COMPLEXVAL, COMPLEXVAL
+#p                  |ID, ID 
+#no caso de serem 2 ID, terá que se verificar se são do mesmo tipo...
+def p_same_type_pair(p):
+    '''SameTypePair : INTVAL ',' INTVAL
+                    | REALVAL ',' REALVAL
+                    | COMPLEXVAL ',' COMPLEXVAL
+                    | ID ',' ID'''
+    p[0] = (p[1], p[3])
+
+#p: Continue -> Label CONTINUE
+def p_continue (p):
+    '''Continue : Label CONTINUE'''
+    p[0] = ("continue", p[1])
+
+#p: Label -> INTVAL
+#p        | Vazio
+def p_label(p):
+    '''Label : INTVAL
+             | empty'''
+    if len(p) > 2:
+        p[0] = p[1]
+    else:
+        p[0] = []
 
 def p_error(p):
     if p:
