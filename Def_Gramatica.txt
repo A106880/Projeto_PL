@@ -107,7 +107,15 @@ p6: SameTypePair -> INTVAL, INTVAL
 p6: Continue -> Label CONTINUE
 p6: Label -> INTVAL\t
         | \t
-GOTO
+
+p: GoTo -> GOTO INTVAL
+p:       | GOTO '(' LabelSeq ')' ',' Expression
+p:       | GOTO ID
+p:       | GOTO ID '(' LabelSeq ')'
+
+p: LabelSeq -> INTVAL
+p:           | INTVAL ',' LabelSeq
+
 p6: Do -> DO 
 p6: If -> IF
 

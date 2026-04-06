@@ -133,6 +133,20 @@ class Continue(Statement):
     def __repr__(self):
         return f"[{self.label}]CONTINUE"
 
+class Goto(Statement):
+    def __init__(self, label):
+        self.label = label
+
+class ComputedGoto(Statement):
+    def __init__(self, labels, expr):
+        self.labels = labels
+        self.expr = expr
+
+class AssignedGoto(Statement):
+    def __init__(self, var, labels=None):
+        self.var = var
+        self.labels = labels
+
 class Mod(Statement):
     def __init__(self, left, right):
         super().__init__()
@@ -591,6 +605,38 @@ def p_same_type_pair(p):
 def p_continue (p):
     '''Continue : Label CONTINUE'''
     p[0] = ("continue", p[1])
+
+# p: GoTo -> GOTO INTVAL
+# p:       | GOTO '(' LabelSeq ')' ',' Expression
+# p:       | GOTO ID
+# p:       | GOTO ID '(' LabelSeq ')'
+def p_goto(p):
+    '''Goto : GOTO INTVAL
+            | GOTO '(' LabelSeq ')' ',' Expression
+            | GOTO ID
+            | GOTO ID '(' LabelSeq ')' '''
+    
+    if len(p) == 3:
+        if isinstance(p[2], int):
+            p[0] = Goto(label=p[2])
+        else:
+            p[0] = AssignedGoto(var=p[2])
+
+    elif len(p) == 7:
+        p[0] = ComputedGoto(labels=p[3], expr=p[6])
+
+    elif len(p) == 6:
+        p[0] = AssignedGoto(var=p[2], labels=p[4])
+
+# p: LabelSeq -> INTVAL
+# p:           | INTVAL ',' LabelSeq
+def p_label_seq(p):
+    '''LabelSeq : INTVAL
+                | INTVAL ',' LabelSeq'''
+    if len(p) == 2:
+        p[0] = [p[1]]
+    else:
+        p[0] = [p[1]] + p[3]
 
 def p_print(p):
     '''Print : PRINT Format Iolist'''
