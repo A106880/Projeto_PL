@@ -6,22 +6,20 @@ class Node:
     def __init__(self):
         self.lineno = None
 
+
+
 class ProgramaPrincipal(Node):
-    def __init__(self, upper_functions, name, declarations, labeled_statements, bottom_functions):
+    def __init__(self, name, declarations, labeled_statements):
         super().__init__()
         self.tipo_no = 'PROGRAMA_PRINCIPAL'
-        self.upper_functions = upper_functions
         self.name = name
         self.declarations = declarations
         self.labeled_statements = labeled_statements
-        self.bottom_functions = bottom_functions
 
     def __repr__(self):
-        return (f" Funções(cima){self.upper_functions}\n"
-                f"Programa({self.name})\n"
+        return (f"Programa({self.name})\n"
                 f"  Declarações{self.declarations}\n"
-                f"  LabeledStatements{self.labeled_statements}\n"
-                f"  Funções(baixo){self.bottom_functions}")
+                f"  LabeledStatements{self.labeled_statements}\n")
 
 class Funcao(Node):
     def __init__(self, return_type, name, arguments, declarations, labeled_statements):
@@ -144,6 +142,17 @@ class Mod(Statement):
     def __repr__(self):
         return f"MOD({self.left}, {self.right})"
 
+
+class Call(Statement):
+    def __init__(self, subroutine,arguments):
+        super().__init__()
+        self.subroutine = subroutine
+        self.arguments = arguments
+
+
+
+
+
 class LabeledStatement(Node):
     def __init__(self, label, statement):
         super().__init__()
@@ -152,6 +161,24 @@ class LabeledStatement(Node):
 
     def __repr__(self):
         return f"{[{self.label}]if self.label!=None else ''} {self.statement}"
+
+
+
+
+class Subroutine(Node):
+    def __init__(self, name, arguments, declarations, labeled_statements):
+        super().__init__()
+        self.name = name
+        self.arguments = arguments
+        self.declarations = declarations
+        self.labeled_statements = labeled_statements
+        
+    def __repr__(self):
+        return (f"Subrotina({self.name},\n"
+                f"  Argumentos: {self.arguments}\n"
+                f"  {self.declarations}\n"
+                f"  {self.labeled_statements}")
+
 
 class LexError(Exception):
     pass
@@ -162,7 +189,7 @@ tokens = (
     'REAL', 'REALVAL', 'DOUBLEPRECISION', 'DOUBLEPRECISIONVAL', 'COMPLEX', 
     'DOUBLECOMPLEX', 'LOGICAL', 'LOGICALVAL', 
     'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ', 
-    'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 
+    'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 'SUBROUTINE', 'CALL' 
     'POWER', 'CONCAT', 'AND', 'OR', 'NOT', 'EQ', 'NE', 'LT', 'LE', 'GT', 'GE'
 )
 
@@ -188,7 +215,9 @@ reserved = {
     'ELSE': 'ELSE', 
     'ENDIF': 'ENDIF', 
     'GOTO': 'GOTO', 
-    'CONTINUE': 'CONTINUE'
+    'CONTINUE': 'CONTINUE',
+    'SUBROUTINE' : 'SUBROUTINE',
+    'CALL' : 'CALL'
 }
 
 def t_INTVAL(t):
@@ -301,28 +330,38 @@ precedence = (
     ('right', 'UMINUS'),       # Operador Unário (Negativo)
 )
 
+#Program -> ProgramUnit Program |
+#               Vazio
+def p_Program(p):
+    '''Program : ProgramUnit Program
+               | empty'''
+    if len(p) > 2:
+        p[0] = [p[1]] + p[2] 
+    else:
+        p[0] = []
+
+# ProgramUnit -> Function | Main | Subroutine
+def p_ProgramUnit(p):
+    '''ProgramUnit : Function 
+                   | Main
+                   | Subroutine'''
+
 # p1: Main -> Functions PROGRAM ID\n Declaritions LabeledStatements END\n Functions
 def p_main(p):
-    '''Main : Functions PROGRAM ID NEWLINE Declarations LabeledStatements END NEWLINE Functions'''
+    '''Main :PROGRAM ID NEWLINE Declarations LabeledStatements END NEWLINE'''
     
     p[0] = ProgramaPrincipal(
-        upper_functions=p[1],
-        name=p[3],
-        declarations=p[5],
-        labeled_statements=p[6],
-        bottom_functions=p[9]
+        name=p[2],
+        declarations=p[4],
+        labeled_statements=p[5]
     ) 
 
 # p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n Functions
 # p3:            | Vazio
 def p_functions(p):
-    '''Functions : FunctionType FUNCTION ID '(' ArgumentList ')' NEWLINE Declarations LabeledStatements END NEWLINE Functions
-                 | empty'''
-    if len(p) > 2:
-        nova_funcao = Funcao(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
-        p[0] = [nova_funcao] + (p[12] if p[12] else [])
-    else:
-        p[0] = []
+    '''Functions : FunctionType FUNCTION ID '(' ArgumentList ')' NEWLINE Declarations LabeledStatements END NEWLINE'''
+    nova_funcao = Funcao(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
+    p[0] = nova_funcao
     
 # p4: FunctionType -> INTEGER
 # p5:     | REAL
@@ -499,7 +538,8 @@ def p_statement(p):
                  | Mod
                  | If
                  | Goto
-                 | Continue'''
+                 | Continue
+                 | Call'''
     p[0] = p[1]
     
 #p: Atribution -> ID PosArray = VAL
@@ -603,6 +643,21 @@ def p_expression_group(p):
 def p_expression_val(p):
     '''Expression : Val'''
     p[0] = p[1]
+
+
+
+
+
+# Subroutine -> SUBROUTINE ID (ArgumentList)\n Declarations LabeledStatements END\n
+def p_Subroutine(p):
+    '''Subroutine :  SUBROUTINE ID '('ArgumentList')' NEWLINE Declarations LabelStatements END LINEBREAK '''
+    p[0] = Subroutine(p[2],p[4],p[7],p[8])
+
+#Call -> CALL ID (ArgumentList)
+def p_Call(p):
+    '''Call : CALL ID '('ArgumentList) '''
+    p[0] = Call(p[2],p[3])
+
 
 #p: Label -> INTVAL
 #p:      | Vazio

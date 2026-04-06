@@ -7,9 +7,15 @@ CONTINUE, $)
 S0 = Main
 
 
+Program -> ProgramUnit Program |
+                Vazio
+ProgramUnit -> Function | Main | Subroutine
+Subroutine -> SUBROUTINE ID (ArgumentList)\n Declarations LabeledStatements END\n
+
+
 Quartas
-p1: Main -> Functions PROGRAM ID\n Declaritions LabeledStatements END\n Functions
-p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n Functions
+p1: Main -> PROGRAM ID\n Declaritions LabeledStatements END\n
+p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n
 p3:            | Vazio
 p4: FunctionType -> INTEGER
         | REAL
@@ -69,7 +75,7 @@ SUBROUTINE e CALL
 ///// VER DEFINICAO DE ACESSOS A ARRAYS (LEMBRAR QUE PODEM SER FEITOS COM EXPRESSOES, INTVAL e VARIAVEIS)
 Main -> ProgramUnit Main | Vazio 
 ProgramUnint -> Program | Function | Subroutine
-
+Call : CALL ID (ArgumentList)
 
 
 
