@@ -163,6 +163,21 @@ class Call(Statement):
         self.subroutine = subroutine
         self.arguments = arguments
 
+class FunctionCall(Node):
+    def __init__(self, name,expressionList):
+        super().__init__()
+        self.name = name
+        self.expressionList = expressionList
+    def __repr__(self) -> str:
+        return f"Chamada da funcao {self.name} com {self.expressionList}"
+    
+class Read(Node):
+    def __init__(self,format,iolist):
+        super().__init__()
+        self.format = format
+        self.iolist = iolist
+    def __repr__(self) -> str:
+        return f"Read(Format: {self.format}, Items: {self.iolist})"
 
 
 
@@ -174,7 +189,7 @@ class LabeledStatement(Node):
         self.statement = statement
 
     def __repr__(self):
-        return f"{[{self.label}]if self.label!=None else ''} {self.statement}"
+        return f"{[{self.label}]if self.label is not None else ''} {self.statement}"
 
 
 
@@ -204,7 +219,8 @@ tokens = (
     'DOUBLECOMPLEX', 'LOGICAL', 'LOGICALVAL', 
     'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ', 
     'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 'SUBROUTINE', 'CALL' 
-    'POWER', 'CONCAT', 'AND', 'OR', 'NOT', 'EQ', 'NE', 'LT', 'LE', 'GT', 'GE'
+    'POWER', 'CONCAT', 'AND', 'OR', 'NOT', 'EQ', 'NE', 'LT', 'LE', 'GT', 'GE',
+    'RETURN'
 )
 
 reserved = {
@@ -231,7 +247,8 @@ reserved = {
     'GOTO': 'GOTO', 
     'CONTINUE': 'CONTINUE',
     'SUBROUTINE' : 'SUBROUTINE',
-    'CALL' : 'CALL'
+    'CALL' : 'CALL',
+    'RETURN' : 'RETURN'
 }
 
 def t_INTVAL(t):
@@ -553,7 +570,8 @@ def p_statement(p):
                  | If
                  | Goto
                  | Continue
-                 | Call'''
+                 | Call
+                 | RETURN'''
     p[0] = p[1]
     
 #p: Atribution -> ID PosArray = VAL
@@ -690,10 +708,6 @@ def p_expression_val(p):
     '''Expression : Val'''
     p[0] = p[1]
 
-
-
-
-
 # Subroutine -> SUBROUTINE ID (ArgumentList)\n Declarations LabeledStatements END\n
 def p_Subroutine(p):
     '''Subroutine :  SUBROUTINE ID '('ArgumentList')' NEWLINE Declarations LabelStatements END LINEBREAK '''
@@ -711,6 +725,27 @@ def p_label(p):
     '''Label : INTVAL
              | empty'''
     p[0] = p[1]
+
+def p_expression_function_call(p):
+    '''Expression : FunctionCall'''
+    p[0] = p[1]
+
+def p_function_call(p):
+    '''FunctionCall : ID '(' Expression ExpressionList ')' '''
+    p[0] = FunctionCall(p[1], [p[3]] + p[4])
+
+
+def p_expression_list(p):
+    '''ExpressionList : ',' Expression ExpressionList
+                      | empty'''
+    if len(p) > 2:
+        p[0] = [p[2]] + p[3]
+    else:
+        p[0] = []
+
+def p_read(p):
+    '''Read : READ Format Iolist'''
+    p[0] = Read(format=p[2], iolist=p[3])
 
 def p_error(p):
     if p:

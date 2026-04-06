@@ -3,7 +3,7 @@ tokens = (PROGRAM, ID, END, FUNCTION, INTEGER, INTVAL, REAL, REALVAL,
 DOUBLEPRECISION, DOUBLEPRECISIONVAL, COMPLEX, COMPLEXVAL, DOUBLECOMPLEX, 
 DOUBLECOMPLEXVAL, LOGICAL, LOGICALVAL, CHARACTER, CHARACTERVAL, HOLLERITH, 
 HOLLERITHVAL, PRINT, READ, WRITE, DO, MOD, IF, THEN, ELSE, ENDIF, GOTO, 
-CONTINUE, $)
+CONTINUE, RETURN, $)
 S0 = Main
 
 
@@ -47,13 +47,13 @@ p4: ArgumentList -> ID ArgumentRestList
 p4: ArgumentRestList -> , ID ArgumentRestList
         | Vazio
 p6: Print -> PRINT Format IoList
-        | PRINT Grname
 p7: IoList -> ,Val IoList 
         |Vazio 
-/////VER COMO FAZER CHAMADA A FUNCOES
-p6: Read -> READ Fn Format Ios Rn StatLabel Iolist  /////VER MELHOR ISTO POS O READ FUNCIONA DE MANEIRA SEMELHANTE AO PRINT
-        | READ Grname
-Write
+p: FunctionCall -> ID '(' Expression ExpressionList ')'
+p: ExpressionList -> ',' Expression ExpressionList
+                  | empty
+p6: Read -> READ Format IoList
+
 
 
 
@@ -90,6 +90,7 @@ p5: Statement -> Atributions
         | Goto
         | Return
         | Continue
+        | RETURN
 p5: Atribution -> ID PosArray = VAL
 ///// VER AS ATRIBUICIES DE EXPRESSOES
 p5: PosArray -> (Pos)
