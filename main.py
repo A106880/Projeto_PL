@@ -1,3 +1,5 @@
+import os
+
 import ply.lex as lex
 import ply.yacc as yacc
 
@@ -18,8 +20,8 @@ class ProgramaPrincipal(Node):
 
     def __repr__(self):
         return (f"Programa({self.name})\n"
-                f"  Declarações{self.declarations}\n"
-                f"  LabeledStatements{self.labeled_statements}\n")
+                f"  Declarações\n:{self.declarations}\n"
+                f"  LabeledStatements:\n{self.labeled_statements}\n")
 
 class Funcao(Node):
     def __init__(self, return_type, name, arguments, declarations, labeled_statements):
@@ -106,8 +108,6 @@ class ArrayId(Node):
         else:
             self.tamanho = tamanho
     def __repr__(self):
-        # Faltava-te o __repr__ aqui! 
-        # Assim ele distingue se é uma variável simples (N) ou um array (NUMS[5])
         if self.tamanho and self.tamanho != 0:
             return f"{self.nome}[{self.tamanho}]"
         return f"{self.nome}"        
@@ -116,36 +116,46 @@ class Statement(Node): #Representa uma ação
     pass
 
 class Assignment(Statement):
-    def __init__(self, name, index, value):
+    def __init__(self, name, value):
         super().__init__()
         self.name = name        # nome
-        self.index = index      # None ou índice no array
         self.value = value      # expressão (valor)
 
     def __repr__(self):
-        return f"{self.name}{''if self.index is None else f'[{self.index}]'} = {self.value}"
+        return f"{self.name} = {self.value}"
 
 class Continue(Statement):
-    def __init__(self, label):
+    def __init__(self):
         super().__init__()
-        self.label = label  #label a acompanhar o continue
     
     def __repr__(self):
-        return f"[{self.label}]CONTINUE"
+        return "CONTINUE"
 
 class Goto(Statement):
     def __init__(self, label):
         self.label = label
+    
+    def __repr__(self):
+        return f"GOTO {self.label}"
 
 class ComputedGoto(Statement):
     def __init__(self, labels, expr):
         self.labels = labels
         self.expr = expr
 
+    def __repr__(self):
+        return f"GOTO ({', '.join(str(label) for label in self.labels)}) , {self.expr}"
+
 class AssignedGoto(Statement):
     def __init__(self, var, labels=None):
         self.var = var
         self.labels = labels
+
+    def __repr__(self):
+        if self.labels:
+            return f"GOTO {self.var} ({', '.join(str(label) for label in self.labels)})"
+        else:
+            return f"GOTO {self.var}"
 
 class Mod(Statement):
     def __init__(self, left, right):
@@ -163,13 +173,14 @@ class Call(Statement):
         self.subroutine = subroutine
         self.arguments = arguments
 
-class FunctionCall(Node):
+#NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
+class FunctionCallorArraysAccess(Node):
     def __init__(self, name,expressionList):
         super().__init__()
         self.name = name
         self.expressionList = expressionList
     def __repr__(self) -> str:
-        return f"Chamada da funcao {self.name} com {self.expressionList}"
+        return f"Chamada da funcao/array {self.name} com/em {self.expressionList}"
     
 class Read(Node):
     def __init__(self,format,iolist):
@@ -189,7 +200,7 @@ class LabeledStatement(Node):
         self.statement = statement
 
     def __repr__(self):
-        return f"{[{self.label}]if self.label is not None else ''} {self.statement}"
+        return f"{[{self.label}]if self.label is not None else ''}{self.statement}\n"
 
 
 
@@ -207,18 +218,41 @@ class Subroutine(Node):
                 f"  Argumentos: {self.arguments}\n"
                 f"  {self.declarations}\n"
                 f"  {self.labeled_statements}")
+    
+class LabeledDO(Node):
+    def __init__(self, label, control_var, control_var_init_value, iterations_number, labeled_statements = None, step = 1):
+        super().__init__()
+        self.label = label
+        self.control_var = control_var
+        self.control_var_init_value = control_var_init_value
+        self.iterations_number = iterations_number
+        self.labeled_statements = labeled_statements #temporariamente a none
+        self.step = step
 
+    def __repr__(self):
+        return (f"DO {self.label} {self.control_var} = {self.control_var_init_value}, {self.iterations_number}, STEP = {self.step}"
+                # f"  LabeledStatements: {self.labeled_statements}\n"
+                # f"{self.label} END DO"
+                )
+
+class Label(Node):
+    def __init__(self, value):
+        super().__init__()
+        self.value = value
+
+    def __repr__(self):
+        return f"Label({self.value})"
 
 class LexError(Exception):
     pass
 
-literals = "(),+-*/"
+literals = "(),+-*/="
 tokens = (
     'NEWLINE', 'PROGRAM', 'ID', 'END', 'FUNCTION', 'INTEGER', 'INTVAL', 
     'REAL', 'REALVAL', 'DOUBLEPRECISION', 'DOUBLEPRECISIONVAL', 'COMPLEX', 
     'DOUBLECOMPLEX', 'LOGICAL', 'LOGICALVAL', 
     'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ', 
-    'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 'SUBROUTINE', 'CALL' 
+    'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 'SUBROUTINE', 'CALL',
     'POWER', 'CONCAT', 'AND', 'OR', 'NOT', 'EQ', 'NE', 'LT', 'LE', 'GT', 'GE',
     'RETURN'
 )
@@ -302,46 +336,57 @@ def t_NEWLINE(t):
 
 def t_POWER(t):
     r'\*\*'
+    t.type = reserved.get(t.value.upper(),'POWER')
     return t
 
 def t_CONCAT(t):
     r'//'
+    t.type = reserved.get(t.value.upper(),'CONCAT')
     return t
 
 def t_AND(t):
     r'\.AND\.|\.and\.'
+    t.type = reserved.get(t.value.upper(),'AND')
     return t
 
 def t_OR(t):
     r'\.or\.|\.OR\.'
+    t.type = reserved.get(t.value.upper(),'OR')
     return t
 
 def t_NOT(t):
     r'\.NOT\.|\.not\.'
+    t.type = reserved.get(t.value.upper(),'NOT')
     return t
 
 def t_EQ(t):
     r'\.EQ\.|\.eq\.'
+    t.type = reserved.get(t.value.upper(),'EQ')
     return t
 
 def t_NE(t):
     r'\.NE\.|\.ne\.'
+    t.type = reserved.get(t.value.upper(),'NE')
     return t
 
 def t_LT(t):
     r'\.LT\.|\.lt\.'
+    t.type = reserved.get(t.value.upper(),'LT')
     return t
 
 def t_LE(t):
     r'\.LE\.|\.le\.'
+    t.type = reserved.get(t.value.upper(),'LE')
     return t
 
 def t_GT(t):
     r'\.GT\.|\.gt\.'
+    t.type = reserved.get(t.value.upper(),'GT')
     return t
 
 def t_GE(t):
     r'\.GE\.|\.ge\.'
+    t.type = reserved.get(t.value.upper(),'GE')
     return t
 
 def t_error(t):
@@ -371,15 +416,16 @@ def p_Program(p):
     else:
         p[0] = []
 
-# ProgramUnit -> Function | Main | Subroutine
+# ProgramUnit -> FunctionDef | Main | Subroutine
 def p_ProgramUnit(p):
-    '''ProgramUnit : Function 
+    '''ProgramUnit : FunctionDef 
                    | Main
                    | Subroutine'''
+    p[0] = p[1]
 
 # p1: Main -> Functions PROGRAM ID\n Declaritions LabeledStatements END\n Functions
 def p_main(p):
-    '''Main :PROGRAM ID NEWLINE Declarations LabeledStatements END NEWLINE'''
+    '''Main : PROGRAM ID NewLines Declarations LabeledStatements END OptNewLines'''
     
     p[0] = ProgramaPrincipal(
         name=p[2],
@@ -387,12 +433,18 @@ def p_main(p):
         labeled_statements=p[5]
     ) 
 
-# p2: Functions -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n Functions
-# p3:            | Vazio
+def p_newlines(p):
+    '''NewLines : NEWLINE NewLines
+                | NEWLINE'''
+
+def p_opt_newlines(p):
+    '''OptNewLines : NEWLINE OptNewLines
+                   | empty'''
+
+# p2: FunctionDef -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n
 def p_functions(p):
-    '''Functions : FunctionType FUNCTION ID '(' ArgumentList ')' NEWLINE Declarations LabeledStatements END NEWLINE'''
-    nova_funcao = Funcao(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
-    p[0] = nova_funcao
+    '''FunctionDef : FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
+    p[0] = Funcao(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
     
 # p4: FunctionType -> INTEGER
 # p5:     | REAL
@@ -411,8 +463,7 @@ def p_function_type(p):
                     | DOUBLECOMPLEX
                     | LOGICAL
                     | CHARACTER
-                    | HOLLERITH
-                    | empty'''
+                    | HOLLERITH'''
     p[0] = p[1] if len(p) > 1 else None
     
 # p13: VarType -> INTEGER
@@ -437,7 +488,7 @@ def p_var_type(p):
 # p21: Val -> INTVAL
 # p22:     | REALVAL
 # p23:     | DOUBLEPRE
-# p24:     | COMPLEXVAL
+# p24:     | ComplexVal
 # p25:     | DOUBLECOMPLEXVAL
 # p26:     | LOGICALVAL
 # p27:     | CHARACTERVAL
@@ -505,7 +556,7 @@ def p_Declarations(p):
 
 #p36: Declaration -> VarType ArrayIdList\n
 def p_Declaration(p):
-    '''Declaration : VarType ArrayIdList NEWLINE'''
+    '''Declaration : VarType ArrayIdList NewLines'''
     nova_declaracao = Declaracao(p[1],p[2])
     p[0] = nova_declaracao
 
@@ -540,18 +591,23 @@ def p_ArraySize(p):
 
 
 
-#p42: LabeledStatements -> Label Statement \n LabeledStatements
-#p43:                   | Vazio
 def p_labeled_statements(p):
-    '''LabeledStatements : Label Statement NEWLINE LabeledStatements
+    '''LabeledStatements : LabeledStatement LabeledStatements
                          | empty'''
     if len(p) > 2:
-        stmt = LabeledStatement(p[1], p[2])
-        p[0] = [stmt] + p[4]
+        p[0] = [p[1]] + p[2]
     else:
         p[0] = []
 
-#p: Statement -> Atributions
+def p_labeled_statement(p):
+    '''LabeledStatement : Label Statement NewLines
+                        | Statement NewLines'''
+    if len(p) > 3:
+        p[0] = LabeledStatement(p[1], p[2])
+    else:
+        p[0] = LabeledStatement(None, p[1])
+
+#p: Statement -> Atribution
 #p        | Print
 #p        | Read
 #p        | Write
@@ -561,45 +617,28 @@ def p_labeled_statements(p):
 #p        | Goto
 #p        | Continue
 def p_statement(p):
-    '''Statement : Atributions
+    '''Statement : Atribution
                  | Print
                  | Read
-                 | Write
-                 | Do
-                 | Mod
                  | If
+                 | labeledDo
+                 | Mod
                  | Goto
                  | Continue
                  | Call
                  | RETURN'''
     p[0] = p[1]
     
-#p: Atribution -> ID PosArray = VAL
+#NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
+#p: Atribution -> FunctionCallorArraysAccess = VAL
 def p_atribution(p):
-    '''Atribution : ID PosArray '=' Val'''
+    '''Atribution : FunctionCallorArraysAccess '=' Expression
+                  | ID '=' Expression'''
+    
     p[0] = Assignment(
         name=p[1],
-        index=p[2] if p[2] else None,
-        value=p[4]
+        value=p[3]
     )
-
-#p: PosArray -> (Pos)
-#p        | Vazio
-def p_pos_array(p):
-    '''PosArray : '(' Pos ')'
-                | empty'''
-
-    if len(p) > 2:
-        p[0] = p[2]
-    else:
-        p[0] = []
-    
-#p: Pos -> INTVAL 
-#p        | ID
-def p_pos(p):
-    '''Pos : INTVAL
-           | ID'''
-    p[0] = p[1]
 
 #p: Mod -> MOD(SameTypePair)
 def p_mod(p):
@@ -609,27 +648,27 @@ def p_mod(p):
 
 #p: SameTypePair -> INTVAL, INTVAL
 #p                  | REALVAL, REALVAL
-#p                  | COMPLEXVAL, COMPLEXVAL
+#p                  | ComplexVal, ComplexVal
 #p                  |ID, ID 
 #no caso de serem 2 ID, terá que se verificar se são do mesmo tipo...
 def p_same_type_pair(p):
     '''SameTypePair : INTVAL ',' INTVAL
                     | REALVAL ',' REALVAL
-                    | COMPLEXVAL ',' COMPLEXVAL
+                    | ComplexVal ',' ComplexVal
                     | ID ',' ID'''
     p[0] = (p[1], p[3])
 
 #p: Continue -> Label CONTINUE
 def p_continue (p):
-    '''Continue : Label CONTINUE'''
-    p[0] = ("continue", p[1])
+    '''Continue : CONTINUE'''
+    p[0] = Continue()
 
-# p: GoTo -> GOTO INTVAL
+# p: GoTo -> GOTO Label
 # p:       | GOTO '(' LabelSeq ')' ',' Expression
 # p:       | GOTO ID
 # p:       | GOTO ID '(' LabelSeq ')'
 def p_goto(p):
-    '''Goto : GOTO INTVAL
+    '''Goto : GOTO Label
             | GOTO '(' LabelSeq ')' ',' Expression
             | GOTO ID
             | GOTO ID '(' LabelSeq ')' '''
@@ -646,15 +685,92 @@ def p_goto(p):
     elif len(p) == 6:
         p[0] = AssignedGoto(var=p[2], labels=p[4])
 
-# p: LabelSeq -> INTVAL
-# p:           | INTVAL ',' LabelSeq
+# p: LabelSeq -> Label
+# p:           | Label ',' LabelSeq
 def p_label_seq(p):
-    '''LabelSeq : INTVAL
-                | INTVAL ',' LabelSeq'''
+    '''LabelSeq : Label
+                | Label ',' LabelSeq'''
     if len(p) == 2:
         p[0] = [p[1]]
     else:
         p[0] = [p[1]] + p[3]
+
+def p_labeledDo(p):
+    '''labeledDo : DO Label ID '=' Expression ',' Expression Step'''
+    p[0] = LabeledDO(p[2], p[3], p[5], p[7], step=p[8])
+
+def p_step(p):
+    '''Step : ',' Expression
+            | empty'''
+    if len(p)>2:
+        p[0] = p[2]
+    else:
+        p[0] = p[1]
+
+class ArithmeticIf(Statement):
+    def __init__(self, exp, labeln, labelz, labelp):
+        super().__init__()
+        self.exp = exp
+        self.labeln = labeln # exp < 0, usa esta label
+        self.labelz = labelz # exp == 0, usa esta label
+        self.labelp = labelp # exp > 0, usa esta label
+
+    def __repr__(self):
+        return f"IF ({self.exp}) {self.labeln}, {self.labelz}, {self.labelp}"
+
+class LogicIf(Statement):
+    def __init__(self, exp, statement):
+        super().__init__()
+        self.exp = exp
+        self.statement = statement
+    
+    def __repr__(self):
+        return f"IF ({self.exp}) {self.statement}"
+
+class BlockIf(Statement):
+    def __init__(self, exp, thenBody, elseBody = None):
+        super().__init__()
+        self.exp = exp #condição
+        self.thenBody = thenBody #conjunto de statements
+        self.elseBody = elseBody #Pode ñ existir(None), ser uma lista de statements(else) ou outro BlockIf(kinda q1 elif)
+
+    def __repr__(self):
+        return f"IF ({self.exp}) THEN\n{self.thenBody}\n{self.elseBody} ENDIF"
+
+
+
+#p: If -> IF (Expression) Label ',' Label ',' Label
+def p_if_arithmetic(p):
+    '''If : IF '(' Expression ')' Label ',' Label ',' Label'''
+    p[0] = ArithmeticIf(p[3], p[5], p[7], p[9])
+#p:     | IF (Expression) Statement
+def p_if_logic(p):
+    '''If : IF '(' Expression ')' Statement'''
+    p[0] = LogicIf(p[3], p[5])
+#p:     | IF (Expression) THEN NewLines LabeledStatements ElseBlock ENDIF 
+def p_if_block(p):
+    '''If : IF '(' Expression ')' THEN NewLines LabeledStatements ElseBlock ENDIF'''
+    p[0] = BlockIf(p[3], p[7], p[8])
+
+#p: ElseBlock -> ELSE ElseBody 
+#p: ElseBlock -> Vazio
+def p_else_block(p):
+    '''ElseBlock : ELSE ElseBody
+                 | empty'''
+    if len(p) > 2:
+        p[0] = p[2]
+    else:
+        p[0] = None
+
+#p: ElseBody -> NewLines LabeledStatements
+#p:           | IF (Expression) THEN NewLines LabeledStatements ElseBlock
+def p_else_body(p):
+    '''ElseBody : NewLines LabeledStatements
+                | IF '(' Expression ')' THEN NewLines LabeledStatements ElseBlock ENDIF'''
+    if (len(p) == 3):
+        p[0] = p[2]
+    else:
+        p[0] = BlockIf(exp = p[3], thenBody = p[7], elseBody = p[8])
 
 def p_print(p):
     '''Print : PRINT Format Iolist'''
@@ -705,34 +821,30 @@ def p_expression_group(p):
     p[0] = p[2]
 
 def p_expression_val(p):
-    '''Expression : Val'''
+    '''Expression : Val
+                  | Mod
+                  | FunctionCallorArraysAccess'''
     p[0] = p[1]
 
 # Subroutine -> SUBROUTINE ID (ArgumentList)\n Declarations LabeledStatements END\n
 def p_Subroutine(p):
-    '''Subroutine :  SUBROUTINE ID '('ArgumentList')' NEWLINE Declarations LabelStatements END LINEBREAK '''
+    '''Subroutine :  SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
     p[0] = Subroutine(p[2],p[4],p[7],p[8])
 
 #Call -> CALL ID (ArgumentList)
 def p_Call(p):
-    '''Call : CALL ID '('ArgumentList) '''
-    p[0] = Call(p[2],p[3])
+    '''Call : CALL ID '(' ArgumentList ')' '''
+    p[0] = Call(p[2], p[4])
 
 
-#p: Label -> INTVAL
-#p:      | Vazio
 def p_label(p):
-    '''Label : INTVAL
-             | empty'''
-    p[0] = p[1]
+    '''Label : INTVAL'''
 
-def p_expression_function_call(p):
-    '''Expression : FunctionCall'''
-    p[0] = p[1]
+    p[0] = Label(p[1])
 
-def p_function_call(p):
-    '''FunctionCall : ID '(' Expression ExpressionList ')' '''
-    p[0] = FunctionCall(p[1], [p[3]] + p[4])
+def p_function_call_or_arrays_access(p):
+    '''FunctionCallorArraysAccess : ID '(' Expression ExpressionList ')' '''
+    p[0] = FunctionCallorArraysAccess(p[1], [p[3]] + p[4])
 
 
 def p_expression_list(p):
@@ -757,27 +869,30 @@ def p_empty(p):
     'empty :'
     pass
 
-parser = yacc.yacc()
-
 
 if __name__ == '__main__':
-    # 1. O código Fortran que queres testar
-    # NOTA: Como a tua regra p_main exige um NEWLINE depois do END, 
-    # é crucial deixar uma linha em branco no final da string!
-    codigo_fortran = """PROGRAM HELLO
-PRINT *, 'Ola, Mundo!'
-END
-"""
 
-    print("A iniciar a análise (parsing) do código Fortran...\n")
+    for file in ("parser.out", "parsetab.py"):
+        try:
+            os.remove(file)
+        except FileNotFoundError:
+            pass
+
+    parser = yacc.yacc()
+
     
-    # 2. Chamar o parser
-    # O PLY vai usar o 'lexer' automaticamente por trás dos panos
-    ast = parser.parse(codigo_fortran)
-    
-    # 3. Imprimir o resultado (a tua Árvore de Sintaxe Abstrata)
-    if ast:
-        print("Sucesso! Aqui está a AST gerada:")
-        print(ast)
-    else:
-        print("O parsing falhou e devolveu None. Verifica os erros acima.")
+    codigo_fortran = ""
+    for ex_number in range(1, 6):
+        with open(f"exemplo{ex_number}.txt","r") as file:
+            codigo_fortran = file.read()
+
+        print(f"A iniciar a análise sintática do código Fortran de exemplo{ex_number}.txt\n")
+        
+        ast = parser.parse(codigo_fortran)
+        
+        if ast:
+            print("Sucesso! Aqui está a AST gerada:")
+            print(ast)
+            print("\n\n\n")
+        else:
+            print("O parsing falhou e devolveu None. Verifica os erros acima.")
