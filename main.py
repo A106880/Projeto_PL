@@ -697,7 +697,7 @@ def p_label_seq(p):
 
 def p_labeledDo(p):
     '''labeledDo : DO Label ID '=' Expression ',' Expression Step'''
-    p[0] = LabeledDO(p[2], p[3], p[5], p[7], step=p[8])
+    p[0] = LabeledDO(p[2], p[3], p[5], p[7], step=p[8]if p[8] is not None else 1)
 
 def p_step(p):
     '''Step : ',' Expression
