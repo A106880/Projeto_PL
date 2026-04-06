@@ -125,14 +125,3 @@ p:  Step -> ',' Expression
 p6: If -> IF
 
 
-
-Falar com o stor:
--Se o read deve ser feito para ser fiel ao original em que tambem le de ficheiros e reporta erros de leitura
--O write por causa dos ficheiros tambem
--Problemas de ambiguidade com os NEWLINE, por causa de poder haver varios
--A validacao da obrigatoriedade da label no continue deve ser feita na analise lexica ou semantica
-
-
-
-
-NUMS(I) -> NUMS[I]
