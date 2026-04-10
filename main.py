@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 
 import ply.lex as lex
@@ -7,11 +8,87 @@ class Node:
     """Classe base genérica para todos os nós da AST."""
     def __init__(self):
         self.lineno = None
+    
+    def __repr__(self):
+        return self.repr(0)
 
+    def repr(self, indent = 0)->str:
+        return ""
+    
+def print_indented_list(nome:str, list:list, indent:int = 0):
+    space0 = '  '*indent
+    space1 = '  '*(indent+1)
+    if any(isinstance(elem, Node) for elem in list):
+        return f"{space0}{nome}{{\n"+"\n".join(elem.repr(indent+1) for elem in list)+f"\n{space0}}}"
+    else:
+        return f"{space0}{nome}{{\n"+"\n".join(f'{space1}{elem}' for elem in list)+f"\n{space0}}}"
+
+def printIfNotNone(conteudo, limitadorEsq:str, limitadorDir:str)->str:
+    return f"{limitadorEsq}{str(conteudo)}{limitadorDir}" if conteudo is not None else "" 
+
+class ArrayId(Node):
+    def __init__(self, nome:str, tamanho:int):
+        super().__init__()
+        self.nome = nome
+        if(tamanho is None):
+            self.tamanho = 0 # ou 1 caso se queira fazer singleton == array de 1 elemento 
+        else:
+            self.tamanho = tamanho
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}{self.nome}{f'[{self.tamanho}]' if self.tamanho != 0 else ''}" 
+
+class Declaracao(Node):
+    def __init__(self, tipo:str, ArrayIdList:list[ArrayId]):
+        super().__init__()
+        self.tipo = tipo
+        self.Ids = ArrayIdList
+    
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        elems = []
+        for elem in self.Ids:
+            elems.append(f"{elem.nome}"+(f"[{elem.tamanho}]" if elem.tamanho > 0 else ""))
+        return f"{space}Declaracao({self.tipo} {' / '.join(elems)})"
+
+class Label(Node):
+    def __init__(self, value:int):
+        super().__init__()
+        self.value = value
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}Label({self.value})"
+
+class Statement(Node):
+    pass
+
+class LabeledStatement(Node):
+    def __init__(self, label:Label|None, statement:Statement):
+        super().__init__()
+        self.label = label      # Label com int ||  um None
+        self.statement = statement
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}{printIfNotNone(self.label, '[', '] ')}{self.statement.repr(indent)}"
 
 
 class ProgramaPrincipal(Node):
-    def __init__(self, name, declarations, labeled_statements):
+    def __init__(self, name:str, declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
         super().__init__()
         self.tipo_no = 'PROGRAMA_PRINCIPAL'
         self.name = name
@@ -19,12 +96,19 @@ class ProgramaPrincipal(Node):
         self.labeled_statements = labeled_statements
 
     def __repr__(self):
-        return (f"Programa({self.name})\n"
-                f"  Declarações\n:{self.declarations}\n"
-                f"  LabeledStatements:\n{self.labeled_statements}\n")
+        return self.repr(0)
 
+    def repr(self, indent = 0):
+        space0 = '  '*indent
+        space1 = '  '*(indent+1)
+        return (f"Programa{printIfNotNone(self.name, '(', ')')}\n"
+                f"{print_indented_list('Declarações', self.declarations, indent+1)}\n"
+                f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
+                f"{space0}END Programa{printIfNotNone(self.name, '(', ')')}\n")
+    
 class Funcao(Node):
-    def __init__(self, return_type, name, arguments, declarations, labeled_statements):
+    def __init__(self, return_type:str, name:str, arguments:list[str] 
+                ,declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
         super().__init__()
         self.return_type = return_type
         self.name = name
@@ -33,87 +117,86 @@ class Funcao(Node):
         self.labeled_statements = labeled_statements
         
     def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
         return (f"Funcao({self.name}, TipoRetorno: {self.return_type})\n"
-                f"  Argumentos: {self.arguments}\n"
-                f"  {self.declarations}\n"
-                f"  {self.labeled_statements}")
+                f"{print_indented_list('Argumentos', self.arguments, indent+1)}\n"
+                f"{print_indented_list('Declarações', self.declarations, indent+1)}\n"
+                f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
+                f"{space}END Funcao({self.name})\n")
 
 class DoublePrecisonComplexVal(Node):
     def __init__(self, elem1, elem2):
         super().__init__()
         self.elem1 = elem1
         self.elem2 = elem2
+
     def __repr__(self):
-        return f"DoublePrecisionComplex({self.elem1},{self.elem2})"
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}DoublePrecisionComplex({self.elem1},{self.elem2})"
 
 class ComplexVal(Node):
     def __init__(self, elem1, elem2):
         super().__init__()
         self.elem1 = elem1
         self.elem2 = elem2
-    def __repr__(self):
-        return f"Complex({self.elem1},{self.elem2})"
-    
-class Print(Node):
-    def __init__(self,format,iolist):
-        super().__init__()
-        self.format = format
-        self.iolist = iolist
-    def __repr__(self) -> str:
-        return f"Print(Format: {self.format}, Items: {self.iolist})"
 
-class BinOp(Node):
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}Complex({self.elem1},{self.elem2})"
+    
+class Expression(Node):
+    pass
+
+class BinOp(Expression):
     """Nó para operações binárias (ex: A + B, NUM .GT. 5)"""
-    def __init__(self, left, op, right):
+    def __init__(self, left, op:str, right):
         super().__init__()
         self.left = left
         self.op = op
         self.right = right
         
     def __repr__(self):
-        return f"({self.left} {self.op} {self.right})"
+        return self.repr(0)
 
-class UnOp(Node):
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}({self.left} {self.op} {self.right})"
+
+class UnOp(Expression):
     """Nó para operações unárias (ex: -A, .NOT. ISPRIM)"""
-    def __init__(self, op, expr):
+    def __init__(self, op:str, expr):
         super().__init__()
         self.op = op
         self.expr = expr
         
     def __repr__(self):
-        return f"({self.op} {self.expr})"
+        return self.repr(0)
 
-class Declaracao(Node):
-    def __init__(self, tipo, ArrayIdList):
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}({self.op} {self.expr})"
+
+class Print(Statement):
+    def __init__(self,format:str,iolist:list[Expression]):
         super().__init__()
-        self.tipo = tipo
-        self.Ids = ArrayIdList
-    
+        self.format = format
+        self.iolist = iolist
+
     def __repr__(self):
-        str = f"Declaracao({self.tipo}"
-        for elem in self.Ids:
-            str += f" {elem.nome}"
-            str += (f"[{elem.tamanho}]" if elem.tamanho > 0 else "")
-            str += " / "
-        return str + ")"
+        return self.repr(0)
 
-
-
-class ArrayId(Node):
-    def __init__(self,nome,tamanho):
-        super().__init__()
-        self.nome = nome
-        if(tamanho is None):
-            self.tamanho = 0 # ou 1 caso se queira fazer singleton == array de 1 elemento 
-        else:
-            self.tamanho = tamanho
-    def __repr__(self):
-        if self.tamanho and self.tamanho != 0:
-            return f"{self.nome}[{self.tamanho}]"
-        return f"{self.nome}"        
-
-class Statement(Node): #Representa uma ação
-    pass
+    def repr(self, indent = 0) -> str:
+        space = '  '*indent
+        return f"Print(Format: {self.format}, Items: {self.iolist})"
 
 class Assignment(Statement):
     def __init__(self, name, value):
@@ -122,6 +205,10 @@ class Assignment(Statement):
         self.value = value      # expressão (valor)
 
     def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
         return f"{self.name} = {self.value}"
 
 class Continue(Statement):
@@ -129,21 +216,38 @@ class Continue(Statement):
         super().__init__()
     
     def __repr__(self):
-        return "CONTINUE"
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"CONTINUE"
+
+class Return(Statement):
+    def __init__(self):
+        super().__init__()
+
+    def repr(self, indent=0):
+        space = '  ' * indent
+        return f"RETURN"
 
 class Goto(Statement):
-    def __init__(self, label):
+    def __init__(self, label:Label):
         self.label = label
     
     def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
         return f"GOTO {self.label}"
 
 class ComputedGoto(Statement):
-    def __init__(self, labels, expr):
+    def __init__(self, labels:list[Label], expr:Expression):
         self.labels = labels
         self.expr = expr
 
-    def __repr__(self):
+    def __repr__(self,indent = 0):
+        space = '  '*indent
         return f"GOTO ({', '.join(str(label) for label in self.labels)}) , {self.expr}"
 
 class AssignedGoto(Statement):
@@ -152,10 +256,65 @@ class AssignedGoto(Statement):
         self.labels = labels
 
     def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
         if self.labels:
             return f"GOTO {self.var} ({', '.join(str(label) for label in self.labels)})"
         else:
             return f"GOTO {self.var}"
+
+class ArithmeticIf(Statement):
+    def __init__(self, exp, labeln, labelz, labelp):
+        super().__init__()
+        self.exp = exp
+        self.labeln = labeln # exp < 0, usa esta label
+        self.labelz = labelz # exp == 0, usa esta label
+        self.labelp = labelp # exp > 0, usa esta label
+
+    def __repr__(self):
+        return self.repr(0)
+    
+    def repr(self, indent = 0):
+        return f"IF ({self.exp}) {self.labeln}, {self.labelz}, {self.labelp}"
+
+class LogicIf(Statement):
+    def __init__(self, exp, statement):
+        super().__init__()
+        self.exp = exp
+        self.statement = statement
+    
+    def __repr__(self):
+        return self.repr(0)
+    
+    def repr(self, indent = 0):
+        return f"IF ({self.exp})\n{self.statement.repr(indent+1)}"
+
+class BlockIf(Statement):
+    def __init__(self, exp:Expression, thenBody:list[LabeledStatement], elseBody:list[LabeledStatement]|BlockIf|None = None):
+        super().__init__()
+        self.exp = exp #condição
+        self.thenBody = thenBody #conjunto de statements
+        self.elseBody = elseBody #Pode ñ existir(None), ser uma lista de statements(else) ou outro BlockIf(kinda q1 elif)
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space0 = '  '*indent
+        space1 = '  '*(indent+1)
+
+        elseBodyText = ""
+        if isinstance(self.elseBody, list):
+            elseBodyText = f"{print_indented_list('ELSE', self.elseBody, indent+1)}\n"
+        elif self.elseBody is not None:
+            elseBodyText = self.elseBody.repr(indent+1)
+        elseBodyText += f"{space0}}}ENDIF"
+
+        return (f"IF ({self.exp}){{\n"
+                f"{print_indented_list('THEN', self.thenBody, indent+1)}\n"
+                f"{elseBodyText}")
 
 class Mod(Statement):
     def __init__(self, left, right):
@@ -164,6 +323,10 @@ class Mod(Statement):
         self.right = right
 
     def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
         return f"MOD({self.left}, {self.right})"
 
 
@@ -175,35 +338,30 @@ class Call(Statement):
 
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
 class FunctionCallorArraysAccess(Node):
-    def __init__(self, name,expressionList):
+    def __init__(self, name:str, expressionList):
         super().__init__()
         self.name = name
         self.expressionList = expressionList
-    def __repr__(self) -> str:
-        return f"Chamada da funcao/array {self.name} com/em {self.expressionList}"
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0) -> str:
+        space = '  '*indent
+        return f"{space}Chamada da funcao/array {self.name} com/em {self.expressionList}"
     
-class Read(Node):
-    def __init__(self,format,iolist):
+class Read(Statement):
+    def __init__(self, format:str, iolist):
         super().__init__()
         self.format = format
         self.iolist = iolist
-    def __repr__(self) -> str:
-        return f"Read(Format: {self.format}, Items: {self.iolist})"
-
-
-
-
-class LabeledStatement(Node):
-    def __init__(self, label, statement):
-        super().__init__()
-        self.label = label      # int ou None
-        self.statement = statement
-
+    
     def __repr__(self):
-        return f"{[{self.label}]if self.label is not None else ''}{self.statement}\n"
-
-
-
+        return self.repr(0)
+    
+    def repr(self, indent = 0) -> str:
+        space = '  '*indent
+        return f"Read(Format: {self.format}, Items: {self.iolist})"
 
 class Subroutine(Node):
     def __init__(self, name, arguments, declarations, labeled_statements):
@@ -214,13 +372,17 @@ class Subroutine(Node):
         self.labeled_statements = labeled_statements
         
     def __repr__(self):
-        return (f"Subrotina({self.name},\n"
-                f"  Argumentos: {self.arguments}\n"
-                f"  {self.declarations}\n"
-                f"  {self.labeled_statements}")
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return (f"{space}Subrotina({self.name},\n"
+                f"{print_indented_list('Argumentos',self.arguments, indent+1)}\n"
+                f"{print_indented_list('Declarações',self.declarations, indent+1)}\n"
+                f"{print_indented_list('LabeledStatements',self.labeled_statements, indent+1)}\n")
     
-class LabeledDO(Node):
-    def __init__(self, label, control_var, control_var_init_value, iterations_number, labeled_statements = None, step = 1):
+class LabeledDO(Statement):
+    def __init__(self, label:Label, control_var:str, control_var_init_value, iterations_number, labeled_statements = None, step = 1):
         super().__init__()
         self.label = label
         self.control_var = control_var
@@ -230,18 +392,32 @@ class LabeledDO(Node):
         self.step = step
 
     def __repr__(self):
-        return (f"DO {self.label} {self.control_var} = {self.control_var_init_value}, {self.iterations_number}, STEP = {self.step}"
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return (f"DO {self.label} (INIT = {self.control_var} = {self.control_var_init_value}, LIMIT = {self.iterations_number}, STEP = {self.step})"
                 # f"  LabeledStatements: {self.labeled_statements}\n"
                 # f"{self.label} END DO"
                 )
 
-class Label(Node):
-    def __init__(self, value):
+class BlockDO(Statement):
+    def __init__(self, control_var:str, init_value, max_value, labeled_statements:list[LabeledStatement], step = 1):
         super().__init__()
-        self.value = value
-
+        self .control_var = control_var
+        self.init_value = init_value
+        self.max_value = max_value
+        self.labeled_statements = labeled_statements
+        self.step = step
+    
     def __repr__(self):
-        return f"Label({self.value})"
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return (f"DO (INIT = {self.control_var} = {self.init_value}, LIMIT = {self.max_value}, STEP = {self.step}){{\n"
+                f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
+                f"{space}}}END DO")
 
 class LexError(Exception):
     pass
@@ -507,7 +683,7 @@ def p_val(p):
     p[0] = p[1]
 
 def p_double_complex_val(p):
-    '''DoubleComplexVal : '(' DOUBLEPRECISIONVAL ',' DOUBLEPRECISIONVAL ')' '''
+    '''DoubleComplexVal : '(' DOUBLEPRECISIONVAL ',' DOUBLEPRECISIONVAL ')'  '''
     doubleComplexValue = DoublePrecisonComplexVal(
         p[2],
         p[4]
@@ -515,7 +691,7 @@ def p_double_complex_val(p):
     p[0] = doubleComplexValue
 
 def p_complex_val(p):
-    '''ComplexVal : '(' REALVAL ',' REALVAL ')' '''
+    '''ComplexVal : '(' REALVAL ',' REALVAL ')'  '''
     complexValue = ComplexVal(
         p[2],
         p[4]
@@ -621,12 +797,12 @@ def p_statement(p):
                  | Print
                  | Read
                  | If
-                 | labeledDo
+                 | Do
                  | Mod
                  | Goto
                  | Continue
                  | Call
-                 | RETURN'''
+                 | Return'''
     p[0] = p[1]
     
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
@@ -642,7 +818,7 @@ def p_atribution(p):
 
 #p: Mod -> MOD(SameTypePair)
 def p_mod(p):
-    '''Mod : MOD '(' SameTypePair ')' '''
+    '''Mod : MOD '(' SameTypePair ')'  '''
     left, right = p[3]
     p[0] = Mod(left, right)
 
@@ -663,15 +839,20 @@ def p_continue (p):
     '''Continue : CONTINUE'''
     p[0] = Continue()
 
+#p Return -> RETURN
+def p_return(p):
+    '''Return : RETURN'''
+    p[0] = Return()
+
 # p: GoTo -> GOTO Label
-# p:       | GOTO '(' LabelSeq ')' ',' Expression
+# p:       | GOTO '(' LabelSeq ')'  ',' Expression
 # p:       | GOTO ID
 # p:       | GOTO ID '(' LabelSeq ')'
 def p_goto(p):
     '''Goto : GOTO Label
-            | GOTO '(' LabelSeq ')' ',' Expression
+            | GOTO '(' LabelSeq ')'  ',' Expression
             | GOTO ID
-            | GOTO ID '(' LabelSeq ')' '''
+            | GOTO ID '(' LabelSeq ')'  '''
     
     if len(p) == 3:
         if isinstance(p[2], int):
@@ -696,8 +877,12 @@ def p_label_seq(p):
         p[0] = [p[1]] + p[3]
 
 def p_labeledDo(p):
-    '''labeledDo : DO Label ID '=' Expression ',' Expression Step'''
+    '''Do : DO Label ID '=' Expression ',' Expression Step'''
     p[0] = LabeledDO(p[2], p[3], p[5], p[7], step=p[8]if p[8] is not None else 1)
+
+def p_block_do(p):
+    '''Do : DO ID '=' Expression ',' Expression Step NewLines LabeledStatements END DO'''
+    p[0] = BlockDO(p[2], p[4], p[6], p[9], step = p[7]if p[7] is not None else 1)
 
 def p_step(p):
     '''Step : ',' Expression
@@ -706,38 +891,6 @@ def p_step(p):
         p[0] = p[2]
     else:
         p[0] = p[1]
-
-class ArithmeticIf(Statement):
-    def __init__(self, exp, labeln, labelz, labelp):
-        super().__init__()
-        self.exp = exp
-        self.labeln = labeln # exp < 0, usa esta label
-        self.labelz = labelz # exp == 0, usa esta label
-        self.labelp = labelp # exp > 0, usa esta label
-
-    def __repr__(self):
-        return f"IF ({self.exp}) {self.labeln}, {self.labelz}, {self.labelp}"
-
-class LogicIf(Statement):
-    def __init__(self, exp, statement):
-        super().__init__()
-        self.exp = exp
-        self.statement = statement
-    
-    def __repr__(self):
-        return f"IF ({self.exp}) {self.statement}"
-
-class BlockIf(Statement):
-    def __init__(self, exp, thenBody, elseBody = None):
-        super().__init__()
-        self.exp = exp #condição
-        self.thenBody = thenBody #conjunto de statements
-        self.elseBody = elseBody #Pode ñ existir(None), ser uma lista de statements(else) ou outro BlockIf(kinda q1 elif)
-
-    def __repr__(self):
-        return f"IF ({self.exp}) THEN\n{self.thenBody}\n{self.elseBody} ENDIF"
-
-
 
 #p: If -> IF (Expression) Label ',' Label ',' Label
 def p_if_arithmetic(p):
@@ -817,7 +970,7 @@ def p_expression_unop(p):
     p[0] = UnOp(op=p[1], expr=p[2])
 
 def p_expression_group(p):
-    '''Expression : '(' Expression ')' '''
+    '''Expression : '(' Expression ')'  '''
     p[0] = p[2]
 
 def p_expression_val(p):
@@ -833,7 +986,7 @@ def p_Subroutine(p):
 
 #Call -> CALL ID (ArgumentList)
 def p_Call(p):
-    '''Call : CALL ID '(' ArgumentList ')' '''
+    '''Call : CALL ID '(' ArgumentList ')'  '''
     p[0] = Call(p[2], p[4])
 
 
@@ -843,7 +996,7 @@ def p_label(p):
     p[0] = Label(p[1])
 
 def p_function_call_or_arrays_access(p):
-    '''FunctionCallorArraysAccess : ID '(' Expression ExpressionList ')' '''
+    '''FunctionCallorArraysAccess : ID '(' Expression ExpressionList ')'  '''
     p[0] = FunctionCallorArraysAccess(p[1], [p[3]] + p[4])
 
 
@@ -880,9 +1033,9 @@ if __name__ == '__main__':
 
     parser = yacc.yacc()
 
-    
+
     codigo_fortran = ""
-    for ex_number in range(1, 6):
+    for ex_number in range(1, 9):
         with open(f"exemplo{ex_number}.txt","r") as file:
             codigo_fortran = file.read()
 

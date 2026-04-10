@@ -1,4 +1,4 @@
-PROGRAM FATORIAL 
+PROGRAM FATORIALDOLABEL
       INTEGER N, I, FAT 
       PRINT *, 'Introduza um numero inteiro positivo:' 
       READ *, N 
