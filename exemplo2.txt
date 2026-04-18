@@ -1,8 +1,12 @@
 PROGRAM FATORIALDOLABEL
-      INTEGER N, I, FAT 
+      INTEGER N, I, FAT
       PRINT *, 'Introduza um numero inteiro positivo:' 
       READ *, N 
-      FAT = 1 
+      FAT = 1
+      FAT = 'o' 
+      FAT = i
+      FOT = 2
+      
       DO 10 I = 1, N 
          FAT = FAT * I 
    10 CONTINUE 
