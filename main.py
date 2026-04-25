@@ -1,6 +1,9 @@
-import os
 from arithmetic_parser import parser
 from node_classes import Assignment
+from semantic_parser import SymbolTable
+from error_classes import SemanticError
+from node_classes import Variable
+
 translate = {
     "INTEGER": int,
     "REAL": float,
@@ -11,58 +14,37 @@ translate = {
     "CHARACTER": str,
     'HOLLERITH': str}
 
-declarations_dict = {}
+
 
 def verify_declarations(declarations):
-    for var in declarations[0].Ids:
-        if var.nome in declarations_dict:
-            print(f"Erro: Variável '{var.nome}' já declarada.")
-            return False
-        declarations_dict[var.nome] = declarations[0].tipo
-    return True
+    for i in range(len(declarations)):
+        for var in declarations[i].Ids:
+            parser.symbols.declare(var.nome.nome, declarations[i].tipo.nome)
 
 def verify_statements(statements):
-    for labeledstmt in statements:
-        statement = labeledstmt.statement
-        if isinstance(statement, Assignment):
-            var_name = statement.name
-            
-            # 1. Verificar se a variável destino foi declarada
-            if var_name not in declarations_dict:
-                print(f"Erro: Variável '{var_name}' usada antes de ser declarada.")
-                return False
-            
-            target_type = declarations_dict[var_name] # Ex: 'INTEGER'
-            value = statement.value
-            
-            # 2. Se o valor for outra variável (uma string vinda do ID)
-            if isinstance(value, str):
-                if value not in declarations_dict:
-                    print(f"Erro na linha {statement.lineno}: Variável '{value}' não declarada.")
-                    return False
-                
-                source_type = declarations_dict[value]
-                if source_type != target_type:
-                    print(f"Erro na linha {statement.lineno}: Atribuição incompatível. "
-                          f"'{var_name}' ({target_type}) recebeu '{value}' ({source_type}).")
-                    return False
-            
-            # 3. Se o valor for um literal (int, float, etc.)
+    for statement in statements:
+        assign = statement.statement
+        if isinstance(assign, Assignment):
+            assign_type = parser.symbols.lookup(assign.name.nome)[0]
+            assign_type_translated = None
+            if isinstance(assign.value, Variable):
+                value_type = parser.symbols.lookup(assign.value.nome)[0]
+                value_type = translate.get(value_type)
             else:
-                expected_python_type = translate[target_type]
-                if not isinstance(value, expected_python_type):
-                    # Se for BinOp ou outro nó, precisas de uma lógica de eval() para saber o tipo resultante
-                    pass 
-    return True
+                value_type = type(assign.value)
+            
+            assign_type_translated = translate.get(assign_type)
+            
+            if assign_type_translated is None:
+                raise SemanticError(f"Unknown type for variable {assign.name.nome}: {translate.get(assign_type)}")
+            if assign_type_translated != value_type:
+                raise SemanticError(f"Type mismatch in assignment to {assign.name.nome}: expected {translate.get(assign_type)}, got {value_type}")
+
+            parser.symbols.initialize(assign.name.nome)
 
 def verify_program(ast):
-    res1 = verify_declarations(ast[0].declarations)
-    if not res1:
-        return res1
-    res2 = verify_statements(ast[0].labeled_statements)
-    if not res2:
-        return res2
-    return True
+    verify_declarations(ast[0].declarations)
+    verify_statements(ast[0].labeled_statements)
 
 
 if __name__ == '__main__':
@@ -86,6 +68,7 @@ if __name__ == '__main__':
     if ast:
         print("Sucesso! Aqui está a AST gerada:")
         print(ast)
+        parser.symbols = SymbolTable()
         res = verify_program(ast)
         print(res)
         print("\n\n\n")

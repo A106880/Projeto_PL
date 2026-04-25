@@ -1,5 +1,5 @@
 import ply.lex as lex
-
+from node_classes import Variable
 class LexError(Exception):
     pass
 
@@ -76,6 +76,7 @@ def t_HOLLERITHVAL(t):
 def t_ID(t):
     r'[a-zA-Z_][a-zA-Z_0-9]*'
     t.type = reserved.get(t.value.upper(), 'ID')
+    t.value = Variable(t.value.upper())
     return t
 
 t_ignore = ' \t'

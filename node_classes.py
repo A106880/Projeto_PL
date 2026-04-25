@@ -420,3 +420,23 @@ class BlockDO(Statement):
         return (f"DO (INIT = {self.control_var} = {self.init_value}, LIMIT = {self.max_value}, STEP = {self.step}){{\n"
                 f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
                 f"{space}}}END DO")
+
+
+
+
+
+
+
+
+
+
+class Variable():
+    def __init__(self, nome:str):
+        self.nome = nome
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return f"{space}Variable({self.nome})"
