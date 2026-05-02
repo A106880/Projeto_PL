@@ -45,26 +45,31 @@ reserved = {
 def t_INTVAL(t):
     r'\d+'
     t.value = int(t.value)
+    t.lineno = t.lexer.lineno
     return t
 
 def t_DOUBLEPRECISIONVAL(t):
     r'\d+\.\d*(?:[Dd][+-]?\d+)?|\.\d+(?:[Dd][+-]?\d+)?|\d+[Dd][+-]?\d+'
     t.value = float(t.value.lower().replace('d', 'e'))
+    t.lineno = t.lexer.lineno
     return t
 
 def t_REALVAL(t):
     r'\d+\.\d*(?:[Ee][+-]?\d+)?|\.\d+(?:[Ee][+-]?\d+)?|\d+[Ee][+-]?\d+'
     t.value = float(t.value)
+    t.lineno = t.lexer.lineno
     return t
 
 def t_LOGICALVAL(t):
     r'\.(TRUE|true|FALSE|false)\.'
     t.value = True if 'true' in t.value.lower() else False
+    t.lineno = t.lexer.lineno
     return t
 
 def t_CHARACTERVAL(t):
     r"'([^']|'')*'"
     t.value = t.value[1:-1].replace("''", "'")
+    t.lineno = t.lexer.lineno
     return t
 
 
@@ -77,6 +82,8 @@ def t_ID(t):
     r'[a-zA-Z_][a-zA-Z_0-9]*'
     t.type = reserved.get(t.value.upper(), 'ID')
     t.value = Variable(t.value.upper())
+    t.value.lineno = t.lexer.lineno
+    t.lineno = t.lexer.lineno
     return t
 
 t_ignore = ' \t'

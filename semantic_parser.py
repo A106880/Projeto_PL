@@ -1,8 +1,8 @@
 from error_classes import SemanticErrorCollector, SemanticError
 from node_classes import (
-    Node, ProgramaPrincipal, Funcao, Subroutine, Declaracao, ArrayId,
+    Node, Program_Unit, ProgramaPrincipal, Funcao, Subroutine, Declaracao, ArrayId,
     LabeledStatement, Assignment, Print, Read, Call,
-    BinOp, UnOp, Mod, FunctionCallorArraysAccess, Variable,
+    BinOp, UnOp, Mod, FunctionorArraysAccess, Variable,
     Continue, Return, Goto, AssignedGoto, ComputedGoto,
     ArithmeticIf, LogicIf, BlockIf, LabeledDO, BlockDO,
     ComplexVal, DoublePrecisionComplexVal, Label,
@@ -91,11 +91,13 @@ class SymbolTable:
 
 def get_name(obj):
     if isinstance(obj, Variable):
-        return obj.nome
+        return obj.name
     if isinstance(obj, Label):
         return obj.value
     if isinstance(obj, str):
         return obj
+    if isinstance(obj, FunctionorArraysAccess):
+        return obj.name.name
     return obj
 
 
@@ -109,6 +111,8 @@ class SemanticParser:
         self._current_unit_name = None
         self._in_function = False
         self._in_do_loop = False
+        self.program_units = {}
+        
 
 
 
@@ -129,17 +133,18 @@ class SemanticParser:
 
     def verify_program(self, ast):
         if isinstance(ast, list):
+            self.verify_global_names(ast)
 
             for unit in ast:
                 if isinstance(unit, Funcao):
                     self.symbols.declare_function(
                         unit.name, unit.return_type,
-                        [a.nome if isinstance(a, Variable) else a for a in unit.arguments]
+                        [a.name if isinstance(a, Variable) else a for a in unit.arguments]
                     )
                 elif isinstance(unit, Subroutine):
                     self.symbols.declare_subroutine(
                         unit.name,
-                        [a.nome if isinstance(a, Variable) else a for a in unit.arguments]
+                        [a.name if isinstance(a, Variable) else a for a in unit.arguments]
                     )
 
             for unit in ast:
@@ -179,7 +184,7 @@ class SemanticParser:
         lineno = node.lineno
         tipo = get_name(node.tipo)
         for var in node.Ids:
-            name = get_name(var.nome)
+            name = get_name(var.name)
             is_array = var.tamanho > 0
             ok, msg = self.symbols.declare(name, tipo, is_array, var.tamanho)
             if not ok:
@@ -188,11 +193,24 @@ class SemanticParser:
     def verify_Assignment(self, node):
         lineno = node.lineno
         assign = node
+                        
         target_name = get_name(assign.name)
         
         info = self.symbols.lookup(target_name)
         if not info:
             self.errors.add_error(f"Undeclared variable: {target_name}", lineno)
+            return
+        if info.get("is_function"):
+            self.errors.add_error(f"Cannot assign to function name: {target_name}", lineno)
+            return
+        if info.get("is_subroutine"):
+            self.errors.add_error(f"Cannot assign to subroutine name: {target_name}", lineno)
+            return
+        if info.get("is_array"):
+            self.errors.add_error(f"Cannot assign to array name without index: {target_name}", lineno)
+            return
+        if not info.get("is_array") and isinstance(node.name, FunctionorArraysAccess):
+            self.errors.add_error(f"This variable is not an array: {target_name}", lineno)
             return
 
         assign_type = info.get("type")
@@ -221,15 +239,15 @@ class SemanticParser:
         lineno = node.lineno
         for item in node.iolist:
             if isinstance(item, Variable):
-                name = item.nome
+                name = item.name
                 if not self.symbols.is_declared(name):
                     self.errors.add_error(f"Undeclared variable in READ: '{name}'", lineno)
                 else:
                     self.symbols.initialize(name)
-            elif isinstance(item, FunctionCallorArraysAccess):
+            elif isinstance(item, FunctionorArraysAccess):
                 name = item.name
                 if isinstance(name, Variable):
-                    name = name.nome
+                    name = name.name
                 if not self.symbols.is_declared(name):
                     self.errors.add_error(f"Undeclared variable in READ: '{name}'", lineno)
                 else:
@@ -237,12 +255,22 @@ class SemanticParser:
                 for expr in item.expressionList:
                     self.verify_expression(expr, lineno)
 
-    def verify_FunctionCallorArraysAccess(self, node):
+    def verify_FunctionorArraysAccess(self, node):
         lineno = node.lineno
-        name = get_name(node.name)
+        name = node.name.name 
+        #FIXME
         info = self.symbols.lookup(name)
         if info is None:
-            self.errors.add_error(f"Undeclared identifier: '{name}'", lineno)
+            self.errors.add_error(f"Undeclared function or array: {name}", lineno)
+        if info and info.get("is_function"):
+            expected_params = info.get("params", [])
+            if len(node.expressionList) != len(expected_params):
+                exp_len = len(expected_params)
+                exprLis = len(node.expressionList)
+                self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {exp_len}, got {exprLis}", lineno)
+        
+
+
         for expr in node.expressionList:
             self.verify_expression(expr, lineno)
         if info:
@@ -278,7 +306,7 @@ class SemanticParser:
         if isinstance(expr, StringVal):
             return "CHARACTER"
         if isinstance(expr, Variable):
-            name = expr.nome
+            name = expr.name
             info = self.symbols.lookup(name)
             if info is None:
                 self.errors.add_error(f"Undeclared variable: '{name}'", current_lineno)
@@ -291,3 +319,27 @@ class SemanticParser:
         if isinstance(expr, Node):
             return self.verify(expr)
         return None
+
+  
+    def verify_global_names(self,ast:list[Program_Unit]):
+        print(self.program_units)
+        for program_unit in ast:
+            print(program_unit.name)
+        
+            if program_unit.name in self.program_units:
+                self.errors.add_error(f"Name {program_unit.name.name} already used", program_unit.lineno)                
+            else:
+                self.program_units[program_unit.name] = program_unit
+
+        print("\n\n",self.program_units.keys())
+
+    def verify_Call(self,node):
+            call_statement = node
+            if call_statement.subroutine in self.program_units:
+                subroutine = self.program_units[call_statement.subroutine]
+                if not isinstance(subroutine, Subroutine):
+                    self.errors.add_error(f"{call_statement.subroutine.name} is not a subroutine", call_statement.lineno)
+                elif len(call_statement.arguments) != len(subroutine.arguments):
+                    expected_args = len(subroutine.arguments)
+                    actual_args = len(call_statement.arguments)
+                    self.errors.add_error(f"Wrong number of arguments calling SUBROUTINE {call_statement.subroutine.name}; expected {expected_args}, got {actual_args}", call_statement.lineno)

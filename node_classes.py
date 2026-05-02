@@ -11,21 +11,21 @@ class Node:
     def repr(self, indent = 0)->str:
         return ""
     
-def print_indented_list(nome:str, list:list, indent:int = 0):
+def print_indented_list(name:str, list:list, indent:int = 0):
     space0 = '  '*indent
     space1 = '  '*(indent+1)
     if any(isinstance(elem, Node) for elem in list):
-        return f"{space0}{nome}{{\n"+"\n".join(elem.repr(indent+1) for elem in list)+f"\n{space0}}}"
+        return f"{space0}{name}{{\n"+"\n".join(elem.repr(indent+1) for elem in list)+f"\n{space0}}}"
     else:
-        return f"{space0}{nome}{{\n"+"\n".join(f'{space1}{elem}' for elem in list)+f"\n{space0}}}"
+        return f"{space0}{name}{{\n"+"\n".join(f'{space1}{elem}' for elem in list)+f"\n{space0}}}"
 
 def printIfNotNone(conteudo, limitadorEsq:str, limitadorDir:str)->str:
     return f"{limitadorEsq}{str(conteudo)}{limitadorDir}" if conteudo is not None else "" 
 
 class ArrayId(Node):
-    def __init__(self, nome:str, tamanho:int):
+    def __init__(self, name:str, tamanho:int):
         super().__init__()
-        self.nome = nome
+        self.name = name
         if(tamanho is None):
             self.tamanho = 0 # ou 1 caso se queira fazer singleton == array de 1 elemento 
         else:
@@ -36,7 +36,7 @@ class ArrayId(Node):
 
     def repr(self, indent = 0):
         space = '  '*indent
-        return f"{space}{self.nome}{f'[{self.tamanho}]' if self.tamanho != 0 else ''}" 
+        return f"{space}{self.name}{f'[{self.tamanho}]' if self.tamanho != 0 else ''}" 
 
 class Declaracao(Node):
     def __init__(self, tipo:str, ArrayIdList:list[ArrayId]):
@@ -51,7 +51,7 @@ class Declaracao(Node):
         space = '  '*indent
         elems = []
         for elem in self.Ids:
-            elems.append(f"{elem.nome}"+(f"[{elem.tamanho}]" if elem.tamanho > 0 else ""))
+            elems.append(f"{elem.name}"+(f"[{elem.tamanho}]" if elem.tamanho > 0 else ""))
         return f"{space}Declaracao({self.tipo} {' / '.join(elems)})"
 
 class Label(Node):
@@ -114,7 +114,7 @@ class Funcao(Program_Unit):
         super().__init__(name,declarations,labeled_statements)
         self.arguments = arguments
         if return_type == None:
-            if name.nome[0] == 'N' or name.nome[0] == 'I':
+            if name.name[0] == 'N' or name.name[0] == 'I':
                 self.return_type = "INTEGER"
             else:
                 self.return_type = "REAL"
@@ -157,7 +157,6 @@ class Subroutine(Program_Unit):
                 f"{print_indented_list('LabeledStatements',self.labeled_statements, indent+1)}\n")
     
 
-class DoublePrecisonComplexVal(Node):
 class DoublePrecisionComplexVal(Node):
     def __init__(self, elem1, elem2):
         super().__init__()
@@ -232,7 +231,7 @@ class Print(Statement):
 class Assignment(Statement):
     def __init__(self, name, value):
         super().__init__()
-        self.name = name        # nome
+        self.name = name        # name
         self.value = value      # expressão (valor)
 
     def __repr__(self):
@@ -367,19 +366,35 @@ class Call(Statement):
         self.subroutine = subroutine
         self.arguments = arguments
     
+    def __eq__(self, other):
+        if isinstance(other, Call):
+            return self.subroutine == other.subroutine and self.arguments == other.arguments
+        return False
+    
+    def __hash__(self):
+        return hash((self.subroutine, tuple(self.arguments)))
+
     def __repr__(self):
         return self.repr(0)
 
-    def repr(self, ident = 0):
-        space = ' '*ident
+    def repr(self, indent = 0):
+        space = ' '*indent
         return f"Call(Subroutine: {self.subroutine}, Arguments: {self.arguments})"
 
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
-class FunctionCallorArraysAccess(Node):
+class FunctionorArraysAccess(Node):
     def __init__(self, name:str, expressionList):
         super().__init__()
         self.name = name
         self.expressionList = expressionList
+
+    def __eq__(self, other):
+        if isinstance(other, FunctionorArraysAccess):
+            return self.name == other.name and self.expressionList == other.expressionList
+        return False
+
+    def __hash__(self):
+        return hash((self.name, tuple(self.expressionList)))
 
     def __repr__(self):
         return self.repr(0)
@@ -449,16 +464,24 @@ class BlockDO(Statement):
 
 
 class Variable(Node):
-    def __init__(self, nome:str):
+    def __init__(self, name:str):
         super().__init__()
-        self.nome = nome
+        self.name = name
+
+    def __eq__(self, other):
+        if isinstance(other, Variable):
+            return self.name == other.name
+        return False
+
+    def __hash__(self):
+        return hash(self.name)
 
     def __repr__(self):
         return self.repr(0)
 
     def repr(self, indent = 0):
         space = '  '*indent
-        return f"{space}Variable({self.nome})"
+        return f"{space}Variable({self.name})"
 
 class IntVal(Node):
     def __init__(self, value: int):

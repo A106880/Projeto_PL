@@ -79,7 +79,7 @@ Call : CALL ID (ArgumentList)
 
 
 
-Lucas
+Lucas (Afonso)
 p5: Statement -> Atributions
         | Print
         | Read
@@ -98,6 +98,12 @@ p5: PosArray -> (Pos)
 p5: Pos -> INTVAL 
         | ID
 
+
+
+
+
+
+(Luis)
 p6: Mod -> MOD(SameTypePair)
 p6: SameTypePair -> INTVAL, INTVAL
                   | REALVAL, REALVAL
@@ -109,11 +115,13 @@ p6: Continue -> Label CONTINUE
 p6: Label -> INTVAL\t
         | \t
 
+
+
+(Lucas)
 p: GoTo -> GOTO INTVAL
 p:       | GOTO '(' LabelSeq ')' ',' Expression
 p:       | GOTO ID
 p:       | GOTO ID '(' LabelSeq ')'
-
 p: LabelSeq -> INTVAL
 p:           | INTVAL ',' LabelSeq
 

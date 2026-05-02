@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Call, Label, FunctionCallorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
+from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Call, Label, FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
 from arithmetic_lexer import tokens, lex
 
 
@@ -271,16 +271,16 @@ def p_statement(p):
     p[0] = p[1]
     
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
-#p: Atribution -> FunctionCallorArraysAccess = VAL
+#p: Atribution -> FunctionorArraysAccess = VAL
 def p_atribution(p):
-    '''Atribution : FunctionCallorArraysAccess '=' Expression
+    '''Atribution : FunctionorArraysAccess '=' Expression
                   | ID '=' Expression'''
     
     p[0] = Assignment(
         name=p[1],
         value=p[3]
     )
-    p[0].lineno = p.lineno(1)
+    p[0].lineno = p[1].lineno if hasattr(p[1], 'lineno') and p[1].lineno is not None else p.lineno(1)
 
 #p: Mod -> MOD(SameTypePair)
 def p_mod(p):
@@ -467,7 +467,7 @@ def p_expression_group(p):
 def p_expression_val(p):
     '''Expression : Val
                   | Mod
-                  | FunctionCallorArraysAccess'''
+                  | FunctionorArraysAccess'''
     p[0] = p[1]
     if not isinstance(p[0], (int, float, bool, str)):
         if p[0] is not None:
@@ -492,10 +492,15 @@ def p_label(p):
     p[0] = Label(p[1])
     p[0].lineno = p.lineno(1)
 
-def p_function_call_or_arrays_access(p):
-    '''FunctionCallorArraysAccess : ID '(' Expression ExpressionList ')'  '''
-    p[0] = FunctionCallorArraysAccess(p[1], [p[3]] + p[4])
-    p[0].lineno = p.lineno(1)
+def p_function_or_arrays_access(p):
+    '''FunctionorArraysAccess : ID '(' Expression ExpressionList ')'  '''
+    p[0] = FunctionorArraysAccess(p[1], [p[3]] + p[4])
+    line = p.lineno(1)
+    line = p[1].lineno if hasattr(p[1], 'lineno') else line
+    line = p[3].lineno if hasattr(p[3], 'lineno') else line
+    line = p[4].lineno if hasattr(p[4], 'lineno') else line
+    p[0].lineno = line
+
 
 def p_expression_list_start(p):
     '''ExpressionListStart : Expression ExpressionList
@@ -524,9 +529,9 @@ def p_read(p):
 
 def p_error(p):
     if p:
-        print(f"Erro de sintaxe próximo a '{p.value}' na linha {p.lineno}")
+        raise SyntaxError(f"Erro de sintaxe próximo a '{p.value}' na linha {p.lineno}")
     else:
-        print("Erro de sintaxe no final do ficheiro (Inesperado End Of File)")
+        raise SyntaxError("Erro de sintaxe no final do ficheiro (Inesperado End Of File)")
 
 def p_empty(p):
     'empty :'
