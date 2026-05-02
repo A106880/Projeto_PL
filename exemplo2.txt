@@ -1,14 +1,26 @@
 PROGRAM FATORIALDOLABEL
-      INTEGER N, I, FAT
+      INTEGER N, I, FAT, BYE(2)
       PRINT *, 'Introduza um numero inteiro positivo:' 
       READ *, N 
       FAT = 1
       FAT = 'o' 
       FAT = i
+      FAT = FIT(1)
+      BYE = 2
+      FAT(1) = 2
       FOT = 2
-      
+      CALL OLA(FAT,FOT)
       DO 10 I = 1, N 
          FAT = FAT * I 
    10 CONTINUE 
       PRINT *, 'Fatorial de ', N, ': ', FAT 
+      END
+
+      INTEGER FUNCTION OLA(N,B)
+      END
+
+      INTEGER FUNCTION OLA(N,B)
+      END
+
+      SUBROUTINE OLA(N,B)
       END
