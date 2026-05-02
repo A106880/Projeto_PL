@@ -56,7 +56,10 @@ def verify_program(ast):
 
 
 if __name__ == '__main__':
+from semantic_parser import SemanticParser
 
+
+if __name__ == "__main__":
     # for file in ("parser.out", "parsetab.py"):
     #     try:
     #         os.remove(file)
@@ -66,13 +69,15 @@ if __name__ == '__main__':
     codigo_fortran = ""
     ex_number = 8
     # for ex_number in range(1, 9):
-    with open(f"exemplo{ex_number}.txt","r") as file:
+    with open(f"exemplo{ex_number}.txt", "r") as file:
         codigo_fortran = file.read()
 
-    print(f"A iniciar a análise sintática do código Fortran de exemplo{ex_number}.txt\n")
-    
+    print(
+        f"A iniciar a análise sintática do código Fortran de exemplo{ex_number}.txt\n"
+    )
+
     ast = parser.parse(codigo_fortran)
-    
+
     if ast:
         print("Sucesso! Aqui está a AST gerada:")
         print(ast)
@@ -83,7 +88,13 @@ if __name__ == '__main__':
         res = verify_program(ast)
         #print(res)
         print("\n\n\n")
+        print("\n--- Análise Semântica ---\n")
+        semantic_parser = SemanticParser()
+        semantic_parser.verify_program(ast)
+        print(semantic_parser.errors.report())
+        print("\n")
     else:
         print("O parsing falhou e devolveu None. Verifica os erros acima.")
+
 
 

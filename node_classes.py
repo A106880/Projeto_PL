@@ -158,6 +158,7 @@ class Subroutine(Program_Unit):
     
 
 class DoublePrecisonComplexVal(Node):
+class DoublePrecisionComplexVal(Node):
     def __init__(self, elem1, elem2):
         super().__init__()
         self.elem1 = elem1
@@ -447,8 +448,9 @@ class BlockDO(Statement):
 
 
 
-class Variable():
+class Variable(Node):
     def __init__(self, nome:str):
+        super().__init__()
         self.nome = nome
 
     def __repr__(self):
@@ -457,3 +459,35 @@ class Variable():
     def repr(self, indent = 0):
         space = '  '*indent
         return f"{space}Variable({self.nome})"
+
+class IntVal(Node):
+    def __init__(self, value: int):
+        super().__init__()
+        self.value = value
+    def __repr__(self): return self.repr(0)
+    def repr(self, indent=0):
+        return f"{'  '*indent}IntVal({self.value})"
+
+class RealVal(Node):
+    def __init__(self, value: float):
+        super().__init__()
+        self.value = value
+    def __repr__(self): return self.repr(0)
+    def repr(self, indent=0):
+        return f"{'  '*indent}RealVal({self.value})"
+
+class StringVal(Node):
+    def __init__(self, value: str):
+        super().__init__()
+        self.value = value
+    def __repr__(self): return self.repr(0)
+    def repr(self, indent=0):
+        return f"{'  '*indent}StringVal('{self.value}')"
+
+class LogicalVal(Node):
+    def __init__(self, value: bool):
+        super().__init__()
+        self.value = value
+    def __repr__(self): return self.repr(0)
+    def repr(self, indent=0):
+        return f"{'  '*indent}LogicalVal({self.value})"
