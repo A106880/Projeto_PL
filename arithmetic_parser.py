@@ -77,7 +77,8 @@ def p_function_type(p):
                     | DOUBLECOMPLEX
                     | LOGICAL
                     | CHARACTER
-                    | HOLLERITH'''
+                    | HOLLERITH
+                    | empty'''
     p[0] = p[1] if len(p) > 1 else None
     if p[0]:
         p[0].lineno = p.lineno(1)
@@ -480,7 +481,7 @@ def p_Subroutine(p):
 
 #Call -> CALL ID (ArgumentList)
 def p_Call(p):
-    '''Call : CALL ID '(' ArgumentList ')'  '''
+    '''Call : CALL ID '(' ExpressionListStart ')' '''
     p[0] = Call(p[2], p[4])
     p[0].lineno = p.lineno(1)
 
@@ -496,6 +497,15 @@ def p_function_call_or_arrays_access(p):
     p[0] = FunctionCallorArraysAccess(p[1], [p[3]] + p[4])
     p[0].lineno = p.lineno(1)
 
+def p_expression_list_start(p):
+    '''ExpressionListStart : Expression ExpressionList
+                      | empty'''
+    if len(p) > 2:
+        p[0] = [p[1]] + p[2]
+        if p[0]:
+            p[0][0].lineno = p.lineno(1)
+    else:
+        p[0] = []
 
 def p_expression_list(p):
     '''ExpressionList : ',' Expression ExpressionList
