@@ -83,13 +83,19 @@ class LabeledStatement(Node):
         return f"{space}{printIfNotNone(self.label, '[', '] ')}{self.statement.repr(indent)}"
 
 
-class ProgramaPrincipal(Node):
-    def __init__(self, name:str, declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
+class Program_Unit(Node):
+    def __init__(self,name:str,declarations:list[Declaracao],labeled_statements:list[LabeledStatement]):
         super().__init__()
-        self.tipo_no = 'PROGRAMA_PRINCIPAL'
         self.name = name
         self.declarations = declarations
         self.labeled_statements = labeled_statements
+    
+
+
+class ProgramaPrincipal(Program_Unit):
+    def __init__(self, name:str, declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
+        super().__init__(name,declarations,labeled_statements)
+        self.tipo_no = 'PROGRAMA_PRINCIPAL'
 
     def __repr__(self):
         return self.repr(0)
@@ -102,15 +108,18 @@ class ProgramaPrincipal(Node):
                 f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
                 f"{space0}END Programa{printIfNotNone(self.name, '(', ')')}\n")
     
-class Funcao(Node):
+class Funcao(Program_Unit):
     def __init__(self, return_type:str, name:str, arguments:list[str] 
                 ,declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
-        super().__init__()
-        self.return_type = return_type
-        self.name = name
+        super().__init__(name,declarations,labeled_statements)
         self.arguments = arguments
-        self.declarations = declarations
-        self.labeled_statements = labeled_statements
+        if return_type == None:
+            if name.nome[0] == 'N' or name.nome[0] == 'I':
+                self.return_type = "INTEGER"
+            else:
+                self.return_type = "REAL"
+        else:
+            self.return_type = return_type
 
         # self.variables = {}
         # for dec in declarations:
@@ -128,6 +137,25 @@ class Funcao(Node):
                 f"{print_indented_list('Declarações', self.declarations, indent+1)}\n"
                 f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
                 f"{space}END Funcao({self.name})\n")
+
+
+
+
+class Subroutine(Program_Unit):
+    def __init__(self, name, arguments, declarations, labeled_statements):
+        super().__init__(name,declarations,labeled_statements)
+        self.arguments = arguments
+        
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return (f"{space}Subrotina({self.name},\n"
+                f"{print_indented_list('Argumentos',self.arguments, indent+1)}\n"
+                f"{print_indented_list('Declarações',self.declarations, indent+1)}\n"
+                f"{print_indented_list('LabeledStatements',self.labeled_statements, indent+1)}\n")
+    
 
 class DoublePrecisonComplexVal(Node):
     def __init__(self, elem1, elem2):
@@ -337,6 +365,13 @@ class Call(Statement):
         super().__init__()
         self.subroutine = subroutine
         self.arguments = arguments
+    
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, ident = 0):
+        space = ' '*ident
+        return f"Call(Subroutine: {self.subroutine}, Arguments: {self.arguments})"
 
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
 class FunctionCallorArraysAccess(Node):
@@ -365,24 +400,6 @@ class Read(Statement):
         space = '  '*indent
         return f"Read(Format: {self.format}, Items: {self.iolist})"
 
-class Subroutine(Node):
-    def __init__(self, name, arguments, declarations, labeled_statements):
-        super().__init__()
-        self.name = name
-        self.arguments = arguments
-        self.declarations = declarations
-        self.labeled_statements = labeled_statements
-        
-    def __repr__(self):
-        return self.repr(0)
-
-    def repr(self, indent = 0):
-        space = '  '*indent
-        return (f"{space}Subrotina({self.name},\n"
-                f"{print_indented_list('Argumentos',self.arguments, indent+1)}\n"
-                f"{print_indented_list('Declarações',self.declarations, indent+1)}\n"
-                f"{print_indented_list('LabeledStatements',self.labeled_statements, indent+1)}\n")
-    
 class LabeledDO(Statement):
     def __init__(self, label:Label, control_var:str, control_var_init_value, iterations_number, labeled_statements = None, step = 1):
         super().__init__()
