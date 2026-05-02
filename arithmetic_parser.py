@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisonComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Call, Label, FunctionCallorArraysAccess, Read
+from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Call, Label, FunctionCallorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
 from arithmetic_lexer import tokens, lex
 
 
@@ -120,14 +120,23 @@ def p_val(p):
            | CHARACTERVAL
            | HOLLERITHVAL
            | ID '''
-    p[0] = p[1]
-    if not isinstance(p[0], (int, float, bool, str)):
-        if p[0] is not None:
-            p[0].lineno = p.lineno(1)
+    if isinstance(p[1], bool):
+        p[0] = LogicalVal(p[1])
+    elif isinstance(p[1], int):
+        p[0] = IntVal(p[1])
+    elif isinstance(p[1], float):
+        p[0] = RealVal(p[1])
+    elif isinstance(p[1], str):
+        p[0] = StringVal(p[1])
+    else:
+        p[0] = p[1]
+        
+    if p[0] is not None:
+        p[0].lineno = p.lineno(1)
 
 def p_double_complex_val(p):
     '''DoubleComplexVal : '(' DOUBLEPRECISIONVAL ',' DOUBLEPRECISIONVAL ')'  '''
-    doubleComplexValue = DoublePrecisonComplexVal(
+    doubleComplexValue = DoublePrecisionComplexVal(
         p[2],
         p[4]
     )
@@ -233,9 +242,10 @@ def p_labeled_statement(p):
                         | Statement NewLines'''
     if len(p) > 3:
         p[0] = LabeledStatement(p[1], p[2])
+        p[0].lineno = p[2].lineno
     else:
         p[0] = LabeledStatement(None, p[1])
-    p[0].lineno = p.lineno(1)
+        p[0].lineno = p[1].lineno
 
 #p: Statement -> Atribution
 #p        | Print
@@ -258,7 +268,6 @@ def p_statement(p):
                  | Call
                  | Return'''
     p[0] = p[1]
-    p[0].lineno = p.lineno(1)
     
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
 #p: Atribution -> FunctionCallorArraysAccess = VAL
