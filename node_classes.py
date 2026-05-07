@@ -228,6 +228,20 @@ class Print(Statement):
         space = '  '*indent
         return f"Print(Format: {self.format}, Items: {self.iolist})"
 
+class Write(Statement):
+    def __init__(self, unit, format:str, iolist:list[Expression]):
+        super().__init__()
+        self.unit = unit
+        self.format = format
+        self.iolist = iolist
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0) -> str:
+        space = '  '*indent
+        return f"Write(Unit: {self.unit}, Format: {self.format}, Items: {self.iolist})"
+
 class Assignment(Statement):
     def __init__(self, name, value):
         super().__init__()
