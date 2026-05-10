@@ -26,7 +26,7 @@ if __name__ == "__main__":
     #         pass
 
     codigo_fortran = ""
-    ex_number = 2
+    ex_number = 8
     # for ex_number in range(1, 9):
     with open(f"exemplo{ex_number}.txt", "r") as file:
         codigo_fortran = file.read()

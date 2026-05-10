@@ -121,6 +121,8 @@ def p_val(p):
            | CHARACTERVAL
            | HOLLERITHVAL
            | ID '''
+    print("hey")
+    print(p[1])
     if isinstance(p[1], bool):
         p[0] = LogicalVal(p[1])
     elif isinstance(p[1], int):
@@ -295,10 +297,7 @@ def p_mod(p):
 #p                  |ID, ID 
 #no caso de serem 2 ID, terá que se verificar se são do mesmo tipo...
 def p_same_type_pair(p):
-    '''SameTypePair : INTVAL ',' INTVAL
-                    | REALVAL ',' REALVAL
-                    | ComplexVal ',' ComplexVal
-                    | ID ',' ID'''
+    '''SameTypePair : Expression "," Expression'''
     p[0] = (p[1], p[3])
 
 #p: Continue -> Label CONTINUE
