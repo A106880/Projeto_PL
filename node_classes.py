@@ -184,7 +184,9 @@ class ComplexVal(Node):
         return f"{space}Complex({self.elem1},{self.elem2})"
     
 class Expression(Node):
-    pass
+    def __init__(self):
+        super().__init__()
+        self.expr_type = None
 
 class BinOp(Expression):
     """Nó para operações binárias (ex: A + B, NUM .GT. 5)"""
@@ -227,6 +229,20 @@ class Print(Statement):
     def repr(self, indent = 0) -> str:
         space = '  '*indent
         return f"Print(Format: {self.format}, Items: {self.iolist})"
+
+class Write(Statement):
+    def __init__(self, unit, format:str, iolist:list[Expression]):
+        super().__init__()
+        self.unit = unit
+        self.format = format
+        self.iolist = iolist
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0) -> str:
+        space = '  '*indent
+        return f"Write(Unit: {self.unit}, Format: {self.format}, Items: {self.iolist})"
 
 class Assignment(Statement):
     def __init__(self, name, value):
@@ -382,11 +398,13 @@ class Call(Statement):
         return f"Call(Subroutine: {self.subroutine}, Arguments: {self.arguments})"
 
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
-class FunctionorArraysAccess(Node):
+class FunctionorArraysAccess(Expression):
     def __init__(self, name:str, expressionList):
         super().__init__()
         self.name = name
         self.expressionList = expressionList
+        self.is_array = False
+        self.is_function = False
 
     def __eq__(self, other):
         if isinstance(other, FunctionorArraysAccess):
