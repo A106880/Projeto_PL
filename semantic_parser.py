@@ -71,12 +71,14 @@ class SymbolTable:
         return_type = get_name(return_type) if return_type else return_type
         params = [get_name(p) for p in params]
         scope = self._scopes[0]
+
         scope[name] = {
             "type": return_type,
             "initialized": True,
             "is_function": True,
             "params": params,
         }
+        return True, ""
 
     def declare_subroutine(self, name, params):
         name = get_name(name)
@@ -88,6 +90,7 @@ class SymbolTable:
             "is_subroutine": True,
             "params": params,
         }
+        return True, ""
 
 
 def get_name(obj):
@@ -120,10 +123,12 @@ class SemanticParser:
 
     def verify(self, node):
         if node is None:
+            
             return None
         if isinstance(node, list):
             for item in node:
                 self.verify(item)
+   
             return None
         class_name = type(node).__name__
         method_name = f"verify_{class_name}"
@@ -131,11 +136,13 @@ class SemanticParser:
         if method:
             return method(node)
 
+ 
         return None
 
     def verify_program(self, ast):
         if isinstance(ast, list):
             self.verify_global_names(ast)
+
 
             for unit in ast:
                 if isinstance(unit, Funcao):
@@ -158,6 +165,7 @@ class SemanticParser:
         self._used_labels.clear()
         self.symbols.push_scope()
         self.process_declarations(node.declarations, node)
+        self.labels = []
         self.process_labeled_statements(node.labeled_statements)
         self.check_labels()
         # Salvar tabela de símbolos da unidade
@@ -186,6 +194,7 @@ class SemanticParser:
 
         self.symbols.declare(func_name, ret_type)
         self.process_declarations(node.declarations, node)
+        self.labels = []
         self.process_labeled_statements(node.labeled_statements)
         self.check_labels()
         # Salvar tabela de símbolos da unidade
@@ -420,8 +429,17 @@ class SemanticParser:
             for decl in declarations:
                 self.verify(decl)
 
-    def process_labeled_statements(self, stmts):
+    def process_labeled_statements(self, stmts:list[LabeledStatement]):
         if stmts:
+            for stmt in stmts:
+
+                if not stmt.label:
+                    pass
+                elif stmt.label.value in self.labels:
+                    return self.errors.add_error(f"Duplicate label: '{stmt.label}'")
+                elif not stmt.label is None:
+                    self.labels.append(stmt.label.value)
+
             for stmt in stmts:
                 self.verify(stmt)
 
@@ -437,6 +455,7 @@ class SemanticParser:
 
     def verify_expression(self, expr, lineno=None):
         if expr is None:
+             
             return None
             
         current_lineno = expr.lineno if expr.lineno is not None else lineno
@@ -470,7 +489,61 @@ class SemanticParser:
             expr.expr_type = t
         return t
 
-  
+    def verify_UnOP(self,op,expr_type):
+        if op == "NOT" and expr_type == "LOGICAL":
+            return "LOGICAL"
+        #To do : Other UnOps
+        return None
+
+    def verify_BinOP(self,op,left_type,right_type):
+        print(op)
+        if (op in ["+","-","*","/","POWER"]):
+            if (left_type in ["INTEGER","REAL"] and left_type == right_type):
+                return left_type
+            else:
+                if not (left_type in ["INTEGER","REAL"]):
+                    self.errors.add_error(f"Wrong left type, expected either INTEGER or REAL, got {left_type}")
+                if not (right_type in ["INTEGER","REAL"]):
+                    self.errors.add_error(f"Wrong right type, expected either INTEGER or REAL, got {right_type}")
+                if not (right_type == left_type):
+                    self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")                
+                return None
+
+
+        if (op in ["CONCAT"]):
+            if (left_type == "CHARACTER" and left_type == right_type):
+                return left_type
+                
+                if not (left_type in ["CHARACTER"]):
+                    self.errors.add_error(f"Wrong left type, expected CHARACTER, got {left_type}")
+                if (right_type in ["CHARACTER"]):
+                    self.errors.add_error(f"Wrong right type, expected CHARACTER, got {right_type}")
+                if not (right_type == left_type):
+                    self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")          
+        
+        if (op in [".AND.",".OR."]):
+            
+            if (left_type == "LOGICAL" and left_type == right_type):
+                return left_type
+
+            if not (left_type in ["LOGICAL"]):
+                self.errors.add_error(f"Wrong left type, expected LOGICAL, got {left_type}")
+            if not(right_type in ["LOGICAL"]):
+                self.errors.add_error(f"Wrong right type, expected LOGICAL, got {right_type}")
+            if not (right_type == left_type):
+                self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")          
+        
+        if (op in [".EQ.",".NE.",".LT.",".LE.",".GT.",".GE."]):
+            if (left_type == right_type):
+                return "LOGICAL"
+
+            if not (right_type == left_type):
+                self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")          
+        
+        
+        
+
+
     def verify_global_names(self,ast:list[Program_Unit]):
         print(self.program_units)
         for program_unit in ast:
@@ -494,6 +567,19 @@ class SemanticParser:
                     actual_args = len(call_statement.arguments)
                     self.errors.add_error(f"Wrong number of arguments calling SUBROUTINE {call_statement.subroutine.name}; expected {expected_args}, got {actual_args}", call_statement.lineno)
 
+
+    def verify_Mod(self,node:Mod):
+        left_type = self.verify_expression(node.left)
+        print(node.right)
+        right_type = self.verify_expression(node.right)
+        if not (left_type == "INTEGER" or left_type == "REAL"):
+            self.errors.add_error(f"Left side of Mod is not a Number, is actually {left_type}")
+        if not (right_type == "INTEGER" or right_type == "REAL"):
+            self.errors.add_error(f"Right side of Mod is not a Number, is actually {right_type}")
+        if not (right_type == left_type):
+            self.errors.add_error(f"Diferent types on Mod, left type = {left_type} and right type = {right_type}")
+        return
+        
     def verify_Statement(self, node):
         if isinstance(node, Goto):
             self._used_labels.append(node.label)
