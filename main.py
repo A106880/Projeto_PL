@@ -2,6 +2,7 @@ from arithmetic_parser import parser
 from semantic_parser import SemanticParser
 from ast_optimizer import ASTOptimizer
 from code_generator import CodeGenerator
+import sys
 
 translate = {
     "INTEGER": int,
@@ -21,21 +22,17 @@ if __name__ == "__main__":
     #         os.remove(file)
     #     except FileNotFoundError:
     #         pass
+    if len(sys.argv) < 2:
+        print("Usage: python main.py <fortran_code_file>")
+        sys.exit(1)
+    filename = sys.argv[1] 
 
-    codigo_fortran = ""
-    ex_number = 1
-    # for ex_number in range(1, 9):
-    with open(f"exemplo{ex_number}.txt", "r") as file:
+    
+    with open(filename, "r") as file:
         codigo_fortran = file.read()
-    # with open("exemplo_otimizar.txt", "r") as file:
-    #     codigo_fortran = file.read()
-    # with open("exemplo_ref.txt", "r") as file:
-    #     codigo_fortran = file.read()
-    # with open("exemplo_erros.txt", "r") as file:
-    #     codigo_fortran = file.read()
 
     print(
-        f"A iniciar a análise sintática do código Fortran de exemplo{ex_number}.txt\n"
+        f"A iniciar a análise sintática do código Fortran de {filename}\n"
     )
 
     ast = parser.parse(codigo_fortran,tracking=True)

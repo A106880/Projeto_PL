@@ -91,9 +91,9 @@ class CodeGenerator:
         var_name = node.name.name if hasattr(node.name, "name") else node.name
         
         # Se for atribuição a um array ARR(I) = valor
-        if isinstance(node.name, FunctionorArraysAccess) and node.name.is_array:
+        if isinstance(node.name, FunctionorArraysAccess): ## and node.name.is_array :
             # 1. Calcular endereço base
-            var = self.lookup(var_name)
+            var = self.lookup(var_name.name if hasattr(node.name, "name") else node.name)
             if var:
                 if var.scope == "GLOBAL":
                     self.instructions.append("PUSHGP")

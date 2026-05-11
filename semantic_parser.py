@@ -337,6 +337,11 @@ class SemanticParser:
                 self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {exp_len}, got {exprLis}", lineno)
         elif info.get("is_array"):
             node.is_array = True
+            arraySize = info.get("array_size", 0)
+            if isinstance(node.expressionList[0], IntVal):
+                accessIndex = node.expressionList[0].value
+                if (accessIndex > arraySize or accessIndex < 1):
+                    self.errors.add_error(f"Index {accessIndex} is out of bounds for array {name} with size {arraySize}", lineno)
 
         for expr in node.expressionList:
             self.verify_expression(expr, lineno)
@@ -432,15 +437,6 @@ class SemanticParser:
     def process_labeled_statements(self, stmts:list[LabeledStatement]):
         if stmts:
             for stmt in stmts:
-
-                if not stmt.label:
-                    pass
-                elif stmt.label.value in self.labels:
-                    return self.errors.add_error(f"Duplicate label: '{stmt.label}'")
-                elif not stmt.label is None:
-                    self.labels.append(stmt.label.value)
-
-            for stmt in stmts:
                 self.verify(stmt)
 
     def verify_LabeledStatement(self, node):
@@ -489,61 +485,6 @@ class SemanticParser:
             expr.expr_type = t
         return t
 
-    def verify_UnOP(self,op,expr_type):
-        if op == "NOT" and expr_type == "LOGICAL":
-            return "LOGICAL"
-        #To do : Other UnOps
-        return None
-
-    def verify_BinOP(self,op,left_type,right_type):
-        print(op)
-        if (op in ["+","-","*","/","POWER"]):
-            if (left_type in ["INTEGER","REAL"] and left_type == right_type):
-                return left_type
-            else:
-                if not (left_type in ["INTEGER","REAL"]):
-                    self.errors.add_error(f"Wrong left type, expected either INTEGER or REAL, got {left_type}")
-                if not (right_type in ["INTEGER","REAL"]):
-                    self.errors.add_error(f"Wrong right type, expected either INTEGER or REAL, got {right_type}")
-                if not (right_type == left_type):
-                    self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")                
-                return None
-
-
-        if (op in ["CONCAT"]):
-            if (left_type == "CHARACTER" and left_type == right_type):
-                return left_type
-                
-                if not (left_type in ["CHARACTER"]):
-                    self.errors.add_error(f"Wrong left type, expected CHARACTER, got {left_type}")
-                if (right_type in ["CHARACTER"]):
-                    self.errors.add_error(f"Wrong right type, expected CHARACTER, got {right_type}")
-                if not (right_type == left_type):
-                    self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")          
-        
-        if (op in [".AND.",".OR."]):
-            
-            if (left_type == "LOGICAL" and left_type == right_type):
-                return left_type
-
-            if not (left_type in ["LOGICAL"]):
-                self.errors.add_error(f"Wrong left type, expected LOGICAL, got {left_type}")
-            if not(right_type in ["LOGICAL"]):
-                self.errors.add_error(f"Wrong right type, expected LOGICAL, got {right_type}")
-            if not (right_type == left_type):
-                self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")          
-        
-        if (op in [".EQ.",".NE.",".LT.",".LE.",".GT.",".GE."]):
-            if (left_type == right_type):
-                return "LOGICAL"
-
-            if not (right_type == left_type):
-                self.errors.add_error(f"Types don't match, got {left_type}, {right_type}")          
-        
-        
-        
-
-
     def verify_global_names(self,ast:list[Program_Unit]):
         print(self.program_units)
         for program_unit in ast:
@@ -572,10 +513,10 @@ class SemanticParser:
         left_type = self.verify_expression(node.left)
         print(node.right)
         right_type = self.verify_expression(node.right)
-        if not (left_type == "INTEGER" or left_type == "REAL"):
-            self.errors.add_error(f"Left side of Mod is not a Number, is actually {left_type}")
-        if not (right_type == "INTEGER" or right_type == "REAL"):
-            self.errors.add_error(f"Right side of Mod is not a Number, is actually {right_type}")
+        if not (left_type == "INTEGER"):
+            self.errors.add_error(f"Left side of Mod is not an Integer, is actually {left_type}")
+        if not (right_type == "INTEGER"):
+            self.errors.add_error(f"Right side of Mod is not an Integer, is actually {right_type}")
         if not (right_type == left_type):
             self.errors.add_error(f"Diferent types on Mod, left type = {left_type} and right type = {right_type}")
         return

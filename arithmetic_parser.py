@@ -121,8 +121,6 @@ def p_val(p):
            | CHARACTERVAL
            | HOLLERITHVAL
            | ID '''
-    print("hey")
-    print(p[1])
     if isinstance(p[1], bool):
         p[0] = LogicalVal(p[1])
     elif isinstance(p[1], int):
