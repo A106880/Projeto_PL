@@ -1,7 +1,7 @@
 from error_classes import SemanticErrorCollector, SemanticError
 from node_classes import (
     Node, Program_Unit, ProgramaPrincipal, Funcao, Subroutine, Declaracao, ArrayId,
-    LabeledStatement, Assignment, Print, Read, Call,
+    LabeledStatement, Assignment, Print, Write, Read, Call,
     BinOp, UnOp, Mod, FunctionorArraysAccess, Variable,
     Continue, Return, Goto, AssignedGoto, ComputedGoto,
     ArithmeticIf, LogicIf, BlockIf, LabeledDO, BlockDO,
@@ -17,6 +17,7 @@ translate = {
                 "CHARACTER": str,
                 "COMPLEX": complex,
                 "DOUBLECOMPLEX": complex,
+                "HOLLERITH": str,
             }
 
 class SymbolTable:
@@ -70,12 +71,14 @@ class SymbolTable:
         return_type = get_name(return_type) if return_type else return_type
         params = [get_name(p) for p in params]
         scope = self._scopes[0]
+
         scope[name] = {
             "type": return_type,
             "initialized": True,
             "is_function": True,
             "params": params,
         }
+        return True, ""
 
     def declare_subroutine(self, name, params):
         name = get_name(name)
@@ -87,6 +90,7 @@ class SymbolTable:
             "is_subroutine": True,
             "params": params,
         }
+        return True, ""
 
 
 def get_name(obj):
@@ -106,22 +110,25 @@ class SemanticParser:
     def __init__(self):
         self.symbols = SymbolTable()
         self.errors = SemanticErrorCollector()
-        self._defined_labels = set()
+        self._defined_labels = {}
         self._used_labels = []
         self._current_unit_name = None
         self._in_function = False
         self._in_do_loop = False
         self.program_units = {}
+        self.unit_symbols = {} # Guarda a tabela de símbolos de cada unidade
         
 
 
 
     def verify(self, node):
         if node is None:
+            
             return None
         if isinstance(node, list):
             for item in node:
                 self.verify(item)
+   
             return None
         class_name = type(node).__name__
         method_name = f"verify_{class_name}"
@@ -129,11 +136,13 @@ class SemanticParser:
         if method:
             return method(node)
 
+ 
         return None
 
     def verify_program(self, ast):
         if isinstance(ast, list):
             self.verify_global_names(ast)
+
 
             for unit in ast:
                 if isinstance(unit, Funcao):
@@ -156,29 +165,51 @@ class SemanticParser:
         self._used_labels.clear()
         self.symbols.push_scope()
         self.process_declarations(node.declarations, node)
+        self.labels = []
         self.process_labeled_statements(node.labeled_statements)
+        self.check_labels()
+        # Salvar tabela de símbolos da unidade
+        unit_name = get_name(node.name) if node.name else "MAIN"
+        self.unit_symbols[unit_name] = dict(self.symbols._scopes[-1])
         self.symbols.pop_scope()
         self._current_unit_name = None
 
     def verify_Funcao(self, node):
-        self._current_unit_name = get_name(node.name)
+        func_name = get_name(node.name)
+        ret_type = get_name(node.return_type)
+        self._current_unit_name = func_name
         self._in_function = True
         self._defined_labels.clear()
         self._used_labels.clear()
         self.symbols.push_scope()
 
+        seen_args = set()
         for arg in node.arguments:
             name = get_name(arg)
-            self.symbols.declare(name, None)
+            if name in seen_args:
+                self.errors.add_error(f"Duplicate argument name in function {func_name}: {name}", node.lineno)
+            else:
+                seen_args.add(name)
+                self.symbols.declare(name, None)
 
-        func_name = get_name(node.name)
-        ret_type = get_name(node.return_type)
         self.symbols.declare(func_name, ret_type)
         self.process_declarations(node.declarations, node)
+        self.labels = []
         self.process_labeled_statements(node.labeled_statements)
+        self.check_labels()
+        # Salvar tabela de símbolos da unidade
+        self.unit_symbols[func_name] = dict(self.symbols._scopes[-1])
         self.symbols.pop_scope()
         self._in_function = False
         self._current_unit_name = None
+
+    def check_labels(self):
+        defined_values = set(self._defined_labels.keys())
+        for label_node in self._used_labels:
+            label_val = get_name(label_node)
+            if label_val not in defined_values:
+                lineno = label_node.lineno if hasattr(label_node, 'lineno') else 0
+                self.errors.add_error(f"Label {label_val} referenced but not defined", lineno)
 
     def verify_Declaracao(self, node):
         lineno = node.lineno
@@ -200,18 +231,29 @@ class SemanticParser:
         if not info:
             self.errors.add_error(f"Undeclared variable: {target_name}", lineno)
             return
-        if info.get("is_function"):
-            self.errors.add_error(f"Cannot assign to function name: {target_name}", lineno)
-            return
+
         if info.get("is_subroutine"):
             self.errors.add_error(f"Cannot assign to subroutine name: {target_name}", lineno)
             return
-        if info.get("is_array"):
-            self.errors.add_error(f"Cannot assign to array name without index: {target_name}", lineno)
-            return
-        if not info.get("is_array") and isinstance(node.name, FunctionorArraysAccess):
-            self.errors.add_error(f"This variable is not an array: {target_name}", lineno)
-            return
+
+        if isinstance(assign.name, FunctionorArraysAccess):
+            if info.get("is_function"):
+                self.errors.add_error(f"Cannot assign to function call: {target_name}", lineno)
+                return
+            if not info.get("is_array"):
+                self.errors.add_error(f"Variable is not an array: {target_name}", lineno)
+                return
+            for idx_expr in assign.name.expressionList:
+                self.verify_expression(idx_expr, lineno)
+
+        else:
+            if info.get("is_function"):
+                if target_name != self._current_unit_name:
+                    self.errors.add_error(f"Cannot assign to function name: {target_name}", lineno)
+                    return
+            elif info.get("is_array"):
+                self.errors.add_error(f"Cannot assign to array without index: {target_name}", lineno)
+                return
 
         assign_type = info.get("type")
         assign_type_translated = translate.get(assign_type)
@@ -232,6 +274,17 @@ class SemanticParser:
 
     def verify_Print(self, node):
         lineno = node.lineno
+        for item in node.iolist:
+            self.verify_expression(item, lineno)
+
+    def verify_Write(self, node):
+        lineno = node.lineno
+        unit = node.unit
+        if unit != '*':
+            self.errors.add_error(
+                f"WRITE para ficheiro (unit={unit}) não suportado, apenas escrita para ecrã (unit=*)",
+                lineno
+            )
         for item in node.iolist:
             self.verify_expression(item, lineno)
 
@@ -258,23 +311,122 @@ class SemanticParser:
     def verify_FunctionorArraysAccess(self, node):
         lineno = node.lineno
         name = node.name.name 
-        #FIXME
         info = self.symbols.lookup(name)
         if info is None:
+            if hasattr(node.name, 'name') and node.name in self.program_units:
+                func_unit = self.program_units[node.name]
+                if isinstance(func_unit, Funcao):
+                    node.is_function = True
+                    expected = len(func_unit.arguments)
+                    actual = len(node.expressionList)
+                    if expected != actual:
+                        self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {expected}, got {actual}", lineno)
+                    for expr in node.expressionList:
+                        self.verify_expression(expr, lineno)
+                    return get_name(func_unit.return_type)
             self.errors.add_error(f"Undeclared function or array: {name}", lineno)
-        if info and info.get("is_function"):
+            for expr in node.expressionList:
+                self.verify_expression(expr, lineno)
+            return None
+        if info.get("is_function"):
+            node.is_function = True
             expected_params = info.get("params", [])
             if len(node.expressionList) != len(expected_params):
                 exp_len = len(expected_params)
                 exprLis = len(node.expressionList)
                 self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {exp_len}, got {exprLis}", lineno)
-        
-
+        elif info.get("is_array"):
+            node.is_array = True
+            arraySize = info.get("array_size", 0)
+            if isinstance(node.expressionList[0], IntVal):
+                accessIndex = node.expressionList[0].value
+                if (accessIndex > arraySize or accessIndex < 1):
+                    self.errors.add_error(f"Index {accessIndex} is out of bounds for array {name} with size {arraySize}", lineno)
 
         for expr in node.expressionList:
             self.verify_expression(expr, lineno)
-        if info:
-            return info.get("type")
+        return info.get("type")
+
+
+    _arithmetic_ops = {'+', '-', '*', '/', '**'}
+
+    _comparison_ops = {'EQ', 'NE', 'LT', 'LE', 'GT', 'GE'}
+
+    _logical_ops = {'AND', 'OR'}
+
+    _numeric_types = {'INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX'}
+
+    def verify_BinOp(self, node):
+        lineno = node.lineno
+        left_type = self.verify_expression(node.left, lineno)
+        right_type = self.verify_expression(node.right, lineno)
+        op = node.op
+
+
+        if left_type is None or right_type is None:
+            return None
+
+        if op in self._arithmetic_ops:
+            if left_type not in self._numeric_types:
+                self.errors.add_error(f"Left operand of '{op}' must be numeric, got {left_type}", lineno)
+                return None
+            if right_type not in self._numeric_types:
+                self.errors.add_error(f"Right operand of '{op}' must be numeric, got {right_type}", lineno)
+                return None
+
+            if left_type == right_type:
+                return left_type
+            type_priority = ['INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX']
+            left_p = type_priority.index(left_type) if left_type in type_priority else 0
+            right_p = type_priority.index(right_type) if right_type in type_priority else 0
+            return type_priority[max(left_p, right_p)]
+
+        elif op in self._comparison_ops:
+            if left_type not in self._numeric_types or right_type not in self._numeric_types:
+                self.errors.add_error(f"Comparison operator '.{op}.' requires numeric operands, got {left_type} and {right_type}", lineno)
+                return None
+            return "LOGICAL"
+
+        elif op in self._logical_ops:
+            if left_type != 'LOGICAL':
+                self.errors.add_error(f"Left operand of '.{op}.' must be LOGICAL, got {left_type}", lineno)
+                return None
+            if right_type != 'LOGICAL':
+                self.errors.add_error(f"Right operand of '.{op}.' must be LOGICAL, got {right_type}", lineno)
+                return None
+            return "LOGICAL"
+
+        elif op == 'CONCAT':
+            if left_type != 'CHARACTER':
+                self.errors.add_error(f"Left operand of '//' must be CHARACTER, got {left_type}", lineno)
+                return None
+            if right_type != 'CHARACTER':
+                self.errors.add_error(f"Right operand of '//' must be CHARACTER, got {right_type}", lineno)
+                return None
+            return "CHARACTER"
+
+        return None
+
+    def verify_UnOp(self, node):
+        lineno = node.lineno
+        expr_type = self.verify_expression(node.expr, lineno)
+        op = node.op
+
+        if expr_type is None:
+            return None
+
+        if op in ('+', '-'):
+            if expr_type not in self._numeric_types:
+                self.errors.add_error(f"Unary '{op}' requires numeric operand, got {expr_type}", lineno)
+                return None
+            return expr_type
+
+        elif op == 'NOT':
+            if expr_type != 'LOGICAL':
+                self.errors.add_error(f"'.NOT.' requires LOGICAL operand, got {expr_type}", lineno)
+                return None
+            return "LOGICAL"
+
         return None
 
     def process_declarations(self, declarations, parent_node=None):
@@ -282,45 +434,57 @@ class SemanticParser:
             for decl in declarations:
                 self.verify(decl)
 
-    def process_labeled_statements(self, stmts):
+    def process_labeled_statements(self, stmts:list[LabeledStatement]):
         if stmts:
             for stmt in stmts:
                 self.verify(stmt)
 
     def verify_LabeledStatement(self, node):
+        if node.label is not None:
+            label_name = get_name(node.label)
+            if label_name in self._defined_labels:
+                self.errors.add_error(f"Duplicate label: {label_name}", node.lineno)
+            else:
+                self._defined_labels[label_name] = node.label
         if getattr(node, 'statement', None):
             self.verify(node.statement)
 
     def verify_expression(self, expr, lineno=None):
         if expr is None:
+             
             return None
             
         current_lineno = expr.lineno if expr.lineno is not None else lineno
             
-        if isinstance(expr, LogicalVal):
-            return "LOGICAL"
-        if isinstance(expr, IntVal):
-            return "INTEGER"
-        if isinstance(expr, RealVal):
-            return "REAL"
-        if isinstance(expr, StringVal):
-            return "CHARACTER"
-        if isinstance(expr, Variable):
-            name = expr.name
-            info = self.symbols.lookup(name)
-            if info is None:
-                self.errors.add_error(f"Undeclared variable: '{name}'", current_lineno)
-                return None
-            return info.get("type")
-        if isinstance(expr, ComplexVal):
-            return "COMPLEX"
-        if isinstance(expr, DoublePrecisionComplexVal):
-            return "DOUBLECOMPLEX"
-        if isinstance(expr, Node):
-            return self.verify(expr)
-        return None
+        def _get_type():
+            if isinstance(expr, LogicalVal):
+                return "LOGICAL"
+            if isinstance(expr, IntVal):
+                return "INTEGER"
+            if isinstance(expr, RealVal):
+                return "REAL"
+            if isinstance(expr, StringVal):
+                return "CHARACTER"
+            if isinstance(expr, Variable):
+                name = expr.name
+                info = self.symbols.lookup(name)
+                if info is None:
+                    self.errors.add_error(f"Undeclared variable: '{name}'", current_lineno)
+                    return None
+                return info.get("type")
+            if isinstance(expr, ComplexVal):
+                return "COMPLEX"
+            if isinstance(expr, DoublePrecisionComplexVal):
+                return "DOUBLECOMPLEX"
+            if isinstance(expr, Node):
+                return self.verify(expr)
+            return None
 
-  
+        t = _get_type()
+        if isinstance(expr, Node):
+            expr.expr_type = t
+        return t
+
     def verify_global_names(self,ast:list[Program_Unit]):
         print(self.program_units)
         for program_unit in ast:
@@ -343,3 +507,42 @@ class SemanticParser:
                     expected_args = len(subroutine.arguments)
                     actual_args = len(call_statement.arguments)
                     self.errors.add_error(f"Wrong number of arguments calling SUBROUTINE {call_statement.subroutine.name}; expected {expected_args}, got {actual_args}", call_statement.lineno)
+
+
+    def verify_Mod(self,node:Mod):
+        left_type = self.verify_expression(node.left)
+        print(node.right)
+        right_type = self.verify_expression(node.right)
+        if not (left_type == "INTEGER"):
+            self.errors.add_error(f"Left side of Mod is not an Integer, is actually {left_type}")
+        if not (right_type == "INTEGER"):
+            self.errors.add_error(f"Right side of Mod is not an Integer, is actually {right_type}")
+        if not (right_type == left_type):
+            self.errors.add_error(f"Diferent types on Mod, left type = {left_type} and right type = {right_type}")
+        return
+        
+    def verify_Statement(self, node):
+        if isinstance(node, Goto):
+            self._used_labels.append(node.label)
+        elif isinstance(node, AssignedGoto):
+            if node.labels:
+                for label in node.labels:
+                    self._used_labels.append(label)
+        elif isinstance(node, ComputedGoto):
+            for label in node.labels:
+                self._used_labels.append(label)
+        elif isinstance(node, ArithmeticIf):
+            self._used_labels.append(node.labeln)
+            self._used_labels.append(node.labelz)
+            self._used_labels.append(node.labelp)
+        elif isinstance(node, LogicIf):
+            pass
+        elif isinstance(node, BlockIf):
+            pass
+        elif isinstance(node, LabeledDO):
+            if node.label:
+                self._used_labels.append(node.label)
+        elif isinstance(node, BlockDO):
+            pass
+        if getattr(node, 'statement', None):
+            self.verify(node.statement)    

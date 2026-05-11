@@ -42,6 +42,17 @@ reserved = {
     'RETURN' : 'RETURN'
 }
 
+def t_HOLLERITHVAL(t):
+    r'\d+[Hh]\w+'
+    import re
+    match = re.match(r'(\d+)[Hh](.*)', t.value)
+    if match:
+        n = int(match.group(1))
+        text = match.group(2)[:n]
+        t.value = text
+    t.lineno = t.lexer.lineno
+    return t
+
 def t_INTVAL(t):
     r'\d+'
     t.value = int(t.value)
@@ -72,10 +83,6 @@ def t_CHARACTERVAL(t):
     t.lineno = t.lexer.lineno
     return t
 
-
-def t_HOLLERITHVAL(t):
-    r'\d+[Hh]\w*'
-    pass
 
 
 def t_ID(t):

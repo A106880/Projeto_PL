@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Call, Label, FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
+from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label, FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
 from arithmetic_lexer import tokens, lex
 
 
@@ -261,6 +261,7 @@ def p_statement(p):
     '''Statement : Atribution
                  | Print
                  | Read
+                 | Write
                  | If
                  | Do
                  | Mod
@@ -295,10 +296,7 @@ def p_mod(p):
 #p                  |ID, ID 
 #no caso de serem 2 ID, terá que se verificar se são do mesmo tipo...
 def p_same_type_pair(p):
-    '''SameTypePair : INTVAL ',' INTVAL
-                    | REALVAL ',' REALVAL
-                    | ComplexVal ',' ComplexVal
-                    | ID ',' ID'''
+    '''SameTypePair : Expression "," Expression'''
     p[0] = (p[1], p[3])
 
 #p: Continue -> Label CONTINUE
@@ -324,7 +322,7 @@ def p_goto(p):
             | GOTO ID '(' LabelSeq ')'  '''
     
     if len(p) == 3:
-        if isinstance(p[2], int):
+        if isinstance(p[2], Label):
             p[0] = Goto(label=p[2])
         else:
             p[0] = AssignedGoto(var=p[2])
@@ -521,6 +519,11 @@ def p_expression_list(p):
             p[0][0].lineno = p.lineno(1)
     else:
         p[0] = []
+
+def p_write(p):
+    '''Write : WRITE '(' Format ',' Format ')' Iolist'''
+    p[0] = Write(unit=p[3], format=p[5], iolist=p[7])
+    p[0].lineno = p.lineno(1)
 
 def p_read(p):
     '''Read : READ Format Iolist'''
