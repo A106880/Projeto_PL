@@ -1,10 +1,6 @@
 from arithmetic_parser import parser
-from node_classes import Assignment
-from semantic_parser import SymbolTable
-from error_classes import SemanticError
-from node_classes import Variable
-from verify import Verifier
 from semantic_parser import SemanticParser
+from ast_optimizer import ASTOptimizer
 
 translate = {
     "INTEGER": int,
@@ -30,6 +26,10 @@ if __name__ == "__main__":
     # for ex_number in range(1, 9):
     with open(f"exemplo{ex_number}.txt", "r") as file:
         codigo_fortran = file.read()
+    # with open("exemplo_otimizar.txt", "r") as file:
+    #     codigo_fortran = file.read()
+    # with open("exemplo_erros.txt", "r") as file:
+    #     codigo_fortran = file.read()
 
     print(
         f"A iniciar a análise sintática do código Fortran de exemplo{ex_number}.txt\n"
@@ -52,6 +52,16 @@ if __name__ == "__main__":
         semantic_parser = SemanticParser()
         semantic_parser.verify_program(ast)
         print(semantic_parser.errors.report())
+        
+        if len(semantic_parser.errors.errors) == 0:
+            print("\n--- Otimização de AST ---\n")
+            optimizer = ASTOptimizer()
+            ast = optimizer.optimize_program(ast)
+            print(f"Otimização concluída! {optimizer.optimized_nodes} nós modificados.")
+            print("\nAST Otimizada:")
+            print(ast)
+        else:
+            print("\nOtimização ignorada devido a erros semânticos.")
         print("\n")
     else:
         print("O parsing falhou e devolveu None. Verifica os erros acima.")

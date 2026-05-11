@@ -431,28 +431,34 @@ class SemanticParser:
             
         current_lineno = expr.lineno if expr.lineno is not None else lineno
             
-        if isinstance(expr, LogicalVal):
-            return "LOGICAL"
-        if isinstance(expr, IntVal):
-            return "INTEGER"
-        if isinstance(expr, RealVal):
-            return "REAL"
-        if isinstance(expr, StringVal):
-            return "CHARACTER"
-        if isinstance(expr, Variable):
-            name = expr.name
-            info = self.symbols.lookup(name)
-            if info is None:
-                self.errors.add_error(f"Undeclared variable: '{name}'", current_lineno)
-                return None
-            return info.get("type")
-        if isinstance(expr, ComplexVal):
-            return "COMPLEX"
-        if isinstance(expr, DoublePrecisionComplexVal):
-            return "DOUBLECOMPLEX"
+        def _get_type():
+            if isinstance(expr, LogicalVal):
+                return "LOGICAL"
+            if isinstance(expr, IntVal):
+                return "INTEGER"
+            if isinstance(expr, RealVal):
+                return "REAL"
+            if isinstance(expr, StringVal):
+                return "CHARACTER"
+            if isinstance(expr, Variable):
+                name = expr.name
+                info = self.symbols.lookup(name)
+                if info is None:
+                    self.errors.add_error(f"Undeclared variable: '{name}'", current_lineno)
+                    return None
+                return info.get("type")
+            if isinstance(expr, ComplexVal):
+                return "COMPLEX"
+            if isinstance(expr, DoublePrecisionComplexVal):
+                return "DOUBLECOMPLEX"
+            if isinstance(expr, Node):
+                return self.verify(expr)
+            return None
+
+        t = _get_type()
         if isinstance(expr, Node):
-            return self.verify(expr)
-        return None
+            expr.expr_type = t
+        return t
 
   
     def verify_global_names(self,ast:list[Program_Unit]):

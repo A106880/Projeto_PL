@@ -325,7 +325,7 @@ def p_goto(p):
             | GOTO ID '(' LabelSeq ')'  '''
     
     if len(p) == 3:
-        if isinstance(p[2], int):
+        if isinstance(p[2], Label):
             p[0] = Goto(label=p[2])
         else:
             p[0] = AssignedGoto(var=p[2])
