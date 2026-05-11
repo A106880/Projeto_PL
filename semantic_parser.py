@@ -113,6 +113,7 @@ class SemanticParser:
         self._in_function = False
         self._in_do_loop = False
         self.program_units = {}
+        self.unit_symbols = {} # Guarda a tabela de símbolos de cada unidade
         
 
 
@@ -159,6 +160,9 @@ class SemanticParser:
         self.process_declarations(node.declarations, node)
         self.process_labeled_statements(node.labeled_statements)
         self.check_labels()
+        # Salvar tabela de símbolos da unidade
+        unit_name = get_name(node.name) if node.name else "MAIN"
+        self.unit_symbols[unit_name] = dict(self.symbols._scopes[-1])
         self.symbols.pop_scope()
         self._current_unit_name = None
 
@@ -184,6 +188,8 @@ class SemanticParser:
         self.process_declarations(node.declarations, node)
         self.process_labeled_statements(node.labeled_statements)
         self.check_labels()
+        # Salvar tabela de símbolos da unidade
+        self.unit_symbols[func_name] = dict(self.symbols._scopes[-1])
         self.symbols.pop_scope()
         self._in_function = False
         self._current_unit_name = None
@@ -301,6 +307,7 @@ class SemanticParser:
             if hasattr(node.name, 'name') and node.name in self.program_units:
                 func_unit = self.program_units[node.name]
                 if isinstance(func_unit, Funcao):
+                    node.is_function = True
                     expected = len(func_unit.arguments)
                     actual = len(node.expressionList)
                     if expected != actual:
@@ -313,11 +320,14 @@ class SemanticParser:
                 self.verify_expression(expr, lineno)
             return None
         if info.get("is_function"):
+            node.is_function = True
             expected_params = info.get("params", [])
             if len(node.expressionList) != len(expected_params):
                 exp_len = len(expected_params)
                 exprLis = len(node.expressionList)
                 self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {exp_len}, got {exprLis}", lineno)
+        elif info.get("is_array"):
+            node.is_array = True
 
         for expr in node.expressionList:
             self.verify_expression(expr, lineno)
