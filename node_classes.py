@@ -95,7 +95,7 @@ class Program_Unit(Node):
 class ProgramaPrincipal(Program_Unit):
     def __init__(self, name:str, declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
-        self.tipo_no = 'PROGRAMA_PRINCIPAL'
+        self.tipo_no = 'MAIN_PROGRAM'
 
     def __repr__(self):
         return self.repr(0)

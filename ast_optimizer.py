@@ -114,6 +114,8 @@ class ASTOptimizer:
         if method:
             return method(node)
         else:
+            if node is not None:
+                print(f"ERROR: Optimization not implemented for: {method_name}")
             return node
             
     def optimize_ProgramaPrincipal(self, node):

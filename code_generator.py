@@ -55,9 +55,9 @@ class CodeGenerator:
         if method:
             method(node)
         else:
-            # Fallback para nós ainda não implementados
+            # Fallback para funções não implementadas
             if node is not None:
-                print(f"DEBUG: Unhandled node type: {class_name}")
+                print(f"ERROR: Generation function not implemented: {method_name}")
 
     def generate_Program_Unit(self, ast):
         if isinstance(ast, list):
@@ -87,6 +87,8 @@ class CodeGenerator:
         self.instructions.append("STOP")
 
     def generate_LabeledStatement(self, node):
+        if node.label:
+            print(f"WARNING: Label generation ({node.label}) is not yet implemented in the CodeGen.")
         if node.statement:
             self.generate(node.statement)
 

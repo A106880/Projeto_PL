@@ -146,7 +146,9 @@ class SemanticParser:
         method = getattr(self, method_name, None)
         if method:
             return method(node)
-
+        
+        if node is not None:
+            print(f"ERROR: Semantic verification not implemented: {method_name}")
  
         return None
 
@@ -561,13 +563,13 @@ class SemanticParser:
             self._used_labels.append(node.labelz)
             self._used_labels.append(node.labelp)
         elif isinstance(node, LogicIf):
-            pass
+            print("WARNING: Semantic verification for LogicIf not yet implemented.")
         elif isinstance(node, BlockIf):
-            pass
+            print("WARNING: Semantic verification for BlockIf not yet implemented.")
         elif isinstance(node, LabeledDO):
             if node.label:
                 self._used_labels.append(node.label)
         elif isinstance(node, BlockDO):
-            pass
+            print("WARNING: Semantic verification for BlockDO not yet implemented.")
         if getattr(node, 'statement', None):
             self.verify(node.statement)    
