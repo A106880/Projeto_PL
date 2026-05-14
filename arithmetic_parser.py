@@ -138,8 +138,8 @@ def p_val(p):
 def p_double_complex_val(p):
     '''DoubleComplexVal : '(' DOUBLEPRECISIONVAL ',' DOUBLEPRECISIONVAL ')'  '''
     doubleComplexValue = DoublePrecisionComplexVal(
-        p[2],
-        p[4]
+        RealVal(p[2]),
+        RealVal(p[4])
     )
     p[0] = doubleComplexValue
     p[0].lineno = p.lineno(1)
@@ -147,8 +147,8 @@ def p_double_complex_val(p):
 def p_complex_val(p):
     '''ComplexVal : '(' REALVAL ',' REALVAL ')'  '''
     complexValue = ComplexVal(
-        p[2],
-        p[4]
+        RealVal(p[2]),
+        RealVal(p[4])
     )
     p[0] = complexValue
     p[0].lineno = p.lineno(1)

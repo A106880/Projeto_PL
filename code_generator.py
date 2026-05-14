@@ -56,7 +56,8 @@ class CodeGenerator:
             method(node)
         else:
             # Fallback para nós ainda não implementados
-            pass
+            if node is not None:
+                print(f"DEBUG: Unhandled node type: {class_name}")
 
     def generate_Program_Unit(self, ast):
         if isinstance(ast, list):
@@ -73,8 +74,11 @@ class CodeGenerator:
         
         for name, info in symbols.items():
             if not info.get("is_function") and not info.get("is_subroutine"):
-                size = info.get("array_size", 1) if info.get("is_array") else 1
-                self.add_global(name, info.get("type"), size)
+                var_type = info.get("type")
+                is_array = info.get("is_array")
+                base_size = 2 if var_type == "COMPLEX" else 1
+                size = (info.get("array_size", 1) if is_array else 1) * base_size
+                self.add_global(name, var_type, size)
 
         if self.gp_offset > 0:
             self.instructions.append(f"PUSHN {self.gp_offset}")
@@ -83,7 +87,6 @@ class CodeGenerator:
         self.instructions.append("STOP")
 
     def generate_LabeledStatement(self, node):
-        # Ignorando GOTO/Labels para já. Só gera a statement.
         if node.statement:
             self.generate(node.statement)
 
@@ -91,7 +94,7 @@ class CodeGenerator:
         var_name = node.name.name if hasattr(node.name, "name") else node.name
         
         # Se for atribuição a um array ARR(I) = valor
-        if isinstance(node.name, FunctionorArraysAccess): ## and node.name.is_array :
+        if isinstance(node.name, FunctionorArraysAccess):
             # 1. Calcular endereço base
             var = self.lookup(var_name.name if hasattr(node.name, "name") else node.name)
             if var:
@@ -118,14 +121,32 @@ class CodeGenerator:
         var = self.lookup(var_name)
 
         if var:
+            is_complex = var.type == "COMPLEX"
             if var.is_ref:
+                if is_complex:
+                    # Guardar Imaginário em base+1
+                    self.instructions.append("DUP 1") # Duplica o endereço
+                    self.instructions.append("PUSHI 1")
+                    self.instructions.append("PADD")
+                    self.instructions.append("PUSHFP") 
+                    self.instructions.append("LOAD 1") 
+                    
+                    pass # TODO: Refinar isto para referências complexas
                 self.instructions.append(f"PUSHL {var.offset}")
                 self.instructions.append("SWAP")
                 self.instructions.append("STORE 0")
             elif var.scope == "GLOBAL":
-                self.instructions.append(f"STOREG {var.offset}")
+                if is_complex:
+                    self.instructions.append(f"STOREG {var.offset + 1}")
+                    self.instructions.append(f"STOREG {var.offset}")
+                else:
+                    self.instructions.append(f"STOREG {var.offset}")
             else:
-                self.instructions.append(f"STOREL {var.offset}")
+                if is_complex:
+                    self.instructions.append(f"STOREL {var.offset + 1}")
+                    self.instructions.append(f"STOREL {var.offset}")
+                else:
+                    self.instructions.append(f"STOREL {var.offset}")
         else:
             print(f"DEBUG: Variable {var_name} not found in environment!")
 
@@ -140,6 +161,18 @@ class CodeGenerator:
                     self.instructions.append("WRITEI")
                 elif t == "REAL":
                     self.instructions.append("WRITEF")
+                elif t == "COMPLEX":
+                    self.instructions.append('PUSHS "("')
+                    self.instructions.append("WRITES")
+                    self.instructions.append("SWAP") 
+                    self.instructions.append("WRITEF")
+                    self.instructions.append('PUSHS ", "')
+                    self.instructions.append("WRITES")
+                    self.instructions.append("WRITEF")
+                    self.instructions.append('PUSHS ")"')
+                    self.instructions.append("WRITES")
+                elif t == "LOGICAL":
+                    self.instructions.append("WRITEI") # Imprime 0 ou 1
                 else:
                     self.instructions.append("WRITEI")  # Fallback
         self.instructions.append("WRITELN")
@@ -150,28 +183,94 @@ class CodeGenerator:
     def generate_RealVal(self, node):
         self.instructions.append(f"PUSHF {node.value}")
 
+    def generate_ComplexVal(self, node):
+        self.generate(node.elem1)
+        self.generate(node.elem2)
+
+    def generate_DoublePrecisionComplexVal(self, node):
+        self.generate_ComplexVal(node)
+
     def generate_StringVal(self, node):
         self.instructions.append(f'PUSHS "{node.value}"')
+
+    def generate_LogicalVal(self, node):
+        val = 1 if node.value else 0
+        self.instructions.append(f"PUSHI {val}")
 
     def generate_Variable(self, node):
         var = self.lookup(node.name)
         if var:
+            is_complex = var.type == "COMPLEX"
             if var.is_ref:
                 self.instructions.append(f"PUSHL {var.offset}")
                 self.instructions.append("LOAD 0")
+                if is_complex:
+                    self.instructions.append(f"PUSHL {var.offset}")
+                    self.instructions.append("PUSHI 1")
+                    self.instructions.append("PADD")
+                    self.instructions.append("LOAD 0")
             elif var.scope == "GLOBAL":
                 self.instructions.append(f"PUSHG {var.offset}")
+                if is_complex:
+                    self.instructions.append(f"PUSHG {var.offset + 1}")
             else:
                 self.instructions.append(f"PUSHL {var.offset}")
+                if is_complex:
+                    self.instructions.append(f"PUSHL {var.offset + 1}")
 
     def generate_BinOp(self, node):
-        self.generate(node.left)
-        self.generate(node.right)
-
         op = node.op
         t = getattr(node, "expr_type", "INTEGER")
-        prefix = "F" if t == "REAL" else ""
+        
+        if t == "COMPLEX":
+            self.generate(node.left)
+            self.generate(node.right)
+            
+            if op in ("+", "-"):
+                prefix = "F"
+                self.instructions.append("SWAP")
+                self.instructions.append("STOREL -1")   
+                self.instructions.append(f"{prefix}{'ADD' if op == '+' else 'SUB'}")
+                self.instructions.append("STOREL -2")
+                self.instructions.append("PUSHL -1")    
+                self.instructions.append(f"{prefix}{'ADD' if op == '+' else 'SUB'}")    
+                self.instructions.append("PUSHL -2")    
+                return
+            
+            elif op == "*":
+                # Vamos guardar tudo em temporários
+                self.instructions.append("STOREL -4") # I2
+                self.instructions.append("STOREL -3") # R2
+                self.instructions.append("STOREL -2") # I1
+                self.instructions.append("STOREL -1") # R1
+                
+                # Real: R1*R2 - I1*I2
+                self.instructions.append("PUSHL -1")
+                self.instructions.append("PUSHL -3")
+                self.instructions.append("FMUL")
+                self.instructions.append("PUSHL -2")
+                self.instructions.append("PUSHL -4")
+                self.instructions.append("FMUL")
+                self.instructions.append("FSUB")
+                
+                # Imag: R1*I2 + I1*R2
+                self.instructions.append("PUSHL -1")
+                self.instructions.append("PUSHL -4")
+                self.instructions.append("FMUL")
+                self.instructions.append("PUSHL -2")
+                self.instructions.append("PUSHL -3")
+                self.instructions.append("FMUL")
+                self.instructions.append("FADD")
+                return
 
+        self.generate(node.left)
+        self.generate(node.right)
+        
+        # Determinar prefixo (F se algum for Real)
+        l_type = getattr(node.left, "expr_type", "")
+        r_type = getattr(node.right, "expr_type", "")
+        prefix = "F" if (l_type == "REAL" or r_type == "REAL") else ""
+        
         if op == "+":
             self.instructions.append(f"{prefix}ADD")
         elif op == "-":
@@ -180,6 +279,45 @@ class CodeGenerator:
             self.instructions.append(f"{prefix}MUL")
         elif op == "/":
             self.instructions.append(f"{prefix}DIV")
+        
+        # Relacionais
+        elif op in (".EQ.", "EQ"):
+            self.instructions.append(f"{prefix}EQ")
+        elif op in (".NE.", "NE"):
+            self.instructions.append(f"{prefix}NE")
+        elif op in (".LT.", "LT"):
+            self.instructions.append(f"{prefix}LT")
+        elif op in (".LE.", "LE"):
+            self.instructions.append(f"{prefix}LE")
+        elif op in (".GT.", "GT"):
+            self.instructions.append(f"{prefix}GT")
+        elif op in (".GE.", "GE"):
+            self.instructions.append(f"{prefix}GE")
+        
+        # Lógicos
+        elif op in (".AND.", "AND"):
+            self.instructions.append("MUL") 
+        elif op in (".OR.", "OR"): 
+            self.instructions.append("ADD")
+            self.instructions.append("PUSHI 0")
+            self.instructions.append("GT")
+
+    def generate_UnOp(self, node):
+        self.generate(node.expr)
+        op = node.op
+        if op == "-":
+            t = getattr(node.expr, "expr_type", "INTEGER")
+            prefix = "F" if t == "REAL" else ""
+            if prefix == "F":
+                self.instructions.append("PUSHF -1.0")
+                self.instructions.append("FMUL")
+            else:
+                self.instructions.append("PUSHI -1")
+                self.instructions.append("MUL")
+        elif op in (".NOT.", "NOT"):
+            self.instructions.append("PUSHI 1")
+            self.instructions.append("SWAP")
+            self.instructions.append("SUB")
 
     def generate_Funcao(self, node):
         func_name = node.name.name if hasattr(node.name, "name") else node.name
@@ -210,8 +348,11 @@ class CodeGenerator:
         # 2. Mapear Variáveis Locais
         for name, info in symbols.items():
             if name not in self.locals and not info.get("is_function") and not info.get("is_subroutine"):
-                size = info.get("array_size", 1) if info.get("is_array") else 1
-                self.add_local(name, info.get("type"), False, size)
+                var_type = info.get("type")
+                is_array = info.get("is_array")
+                base_size = 2 if var_type == "COMPLEX" else 1
+                size = (info.get("array_size", 1) if is_array else 1) * base_size
+                self.add_local(name, var_type, False, size)
 
         # Alocar espaço para as variáveis locais (se houver)
         num_locals = self.fp_offset - 1
@@ -242,8 +383,7 @@ class CodeGenerator:
                 self.instructions.append(f"PUSHI {var.offset}")
                 self.instructions.append("PADD")
 
-                # 2. Calcular Offset (Índice - 1)
-                # Fortran é 1-indexed. Assumimos 1D.
+                # 2. Calcular Offset
                 self.generate(node.expressionList[0])
                 self.instructions.append("PUSHI 1")
                 self.instructions.append("SUB")
