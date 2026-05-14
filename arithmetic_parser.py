@@ -18,10 +18,10 @@ precedence = (
 #Program -> ProgramUnit Program |
 #               Vazio
 def p_Program(p):
-    '''Program : ProgramUnit Program
-               | empty'''
-    if len(p) > 2:
-        p[0] = [p[1]] + p[2] 
+    '''Program : OptNewLines ProgramUnit Program
+               | OptNewLines'''
+    if len(p) == 4:
+        p[0] = [p[2]] + p[3]
     else:
         p[0] = []
 
