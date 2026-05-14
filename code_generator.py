@@ -193,13 +193,13 @@ class CodeGenerator:
         symbols = self.semantic_info.unit_symbols.get(func_name, {})
         n_args = len(node.arguments)
 
-        # O nome da função atua como uma variável local para o valor de retorno (offset -n_args)
-        ret_var = EnvVar(func_name, "LOCAL", -n_args, node.return_type, is_ref=True)
+        # O nome da função atua como uma variável local para o valor de retorno
+        ret_var = EnvVar(func_name, "LOCAL", -(n_args + 1), node.return_type, is_ref=False)
         self.locals[func_name] = ret_var
 
         # 1. Mapear Argumentos
         for i, arg in enumerate(node.arguments):
-            offset = -n_args + 1 + i
+            offset = -n_args + i
             arg_name = arg.name if hasattr(arg, "name") else arg
             info = symbols.get(arg_name, {})
             var = EnvVar(arg_name, "LOCAL", offset, info.get("type"), is_ref=True)

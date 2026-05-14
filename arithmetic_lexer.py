@@ -95,8 +95,15 @@ def t_ID(t):
 
 t_ignore = ' \t'
 
+def preprocess_fortran(source):
+    lines = source.split('\n')
+    for i, line in enumerate(lines):
+        if line and line[0] in ('C', 'c', '*'):
+            lines[i] = ''
+    return '\n'.join(lines)
+
 def t_COMMENT(t):
-    r'(^[Cc*].*)|(!.*)'
+    r'!.*'
     pass
 
 

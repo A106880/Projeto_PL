@@ -1,4 +1,5 @@
 from arithmetic_parser import parser
+from arithmetic_lexer import preprocess_fortran
 from semantic_parser import SemanticParser
 from ast_optimizer import ASTOptimizer
 from code_generator import CodeGenerator
@@ -34,6 +35,8 @@ if __name__ == "__main__":
     print(
         f"A iniciar a análise sintática do código Fortran de {filename}\n"
     )
+
+    codigo_fortran = preprocess_fortran(codigo_fortran)
 
     ast = parser.parse(codigo_fortran,tracking=True)
 

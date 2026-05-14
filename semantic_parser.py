@@ -34,6 +34,17 @@ class SymbolTable:
 
     def declare(self, name, var_type, is_array=False, array_size=0):
         scope = self._scopes[-1]
+        if len(self._scopes) > 1:
+            global_scope = self._scopes[0]
+            if name in global_scope and global_scope[name].get("is_function"):
+                if not is_array:
+                    global_type = global_scope[name].get("type")
+                    if global_type is None and var_type is not None:
+                        global_scope[name]["type"] = var_type
+                    elif global_type is not None and var_type is not None and global_type != var_type:
+                        return False, f"Conflicting type declaration for function: '{name}'"
+                    return True, ""
+
         if name in scope:
 
             if scope[name].get("type") is None and var_type is not None:
@@ -310,13 +321,14 @@ class SemanticParser:
 
     def verify_FunctionorArraysAccess(self, node):
         lineno = node.lineno
-        name = node.name.name 
+        name = get_name(node.name)
         info = self.symbols.lookup(name)
         if info is None:
-            if hasattr(node.name, 'name') and node.name in self.program_units:
-                func_unit = self.program_units[node.name]
+            if name in self.program_units:
+                func_unit = self.program_units[name]
                 if isinstance(func_unit, Funcao):
                     node.is_function = True
+                    node.is_array = False
                     expected = len(func_unit.arguments)
                     actual = len(node.expressionList)
                     if expected != actual:
@@ -486,16 +498,15 @@ class SemanticParser:
         return t
 
     def verify_global_names(self,ast:list[Program_Unit]):
-        print(self.program_units)
+        # print(self.program_units)
         for program_unit in ast:
-            print(program_unit.name)
-        
-            if program_unit.name in self.program_units:
-                self.errors.add_error(f"Name {program_unit.name.name} already used", program_unit.lineno)                
+            name = get_name(program_unit.name)
+            if name in self.program_units:
+                self.errors.add_error(f"Name {name} already used", program_unit.lineno)                
             else:
-                self.program_units[program_unit.name] = program_unit
+                self.program_units[name] = program_unit
 
-        print("\n\n",self.program_units.keys())
+        # print("\n\n",self.program_units.keys())
 
     def verify_Call(self,node):
             call_statement = node
