@@ -52,7 +52,7 @@ class Declaracao(Node):
         elems = []
         for elem in self.Ids:
             elems.append(f"{elem.name}"+(f"[{elem.tamanho}]" if elem.tamanho > 0 else ""))
-        return f"{space}Declaracao({self.tipo} {' / '.join(elems)})"
+        return f"{space}Declaration({self.tipo} {' / '.join(elems)})"
 
 class Label(Node):
     def __init__(self, value:int):
@@ -103,10 +103,10 @@ class ProgramaPrincipal(Program_Unit):
     def repr(self, indent = 0):
         space0 = '  '*indent
         space1 = '  '*(indent+1)
-        return (f"Programa{printIfNotNone(self.name, '(', ')')}\n"
-                f"{print_indented_list('Declarações', self.declarations, indent+1)}\n"
+        return (f"Program{printIfNotNone(self.name, '(', ')')}\n"
+                f"{print_indented_list('Declarations', self.declarations, indent+1)}\n"
                 f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
-                f"{space0}END Programa{printIfNotNone(self.name, '(', ')')}\n")
+                f"{space0}END Program{printIfNotNone(self.name, '(', ')')}\n")
     
 class Funcao(Program_Unit):
     def __init__(self, return_type:str, name:str, arguments:list[str] 
@@ -132,11 +132,11 @@ class Funcao(Program_Unit):
 
     def repr(self, indent = 0):
         space = '  '*indent
-        return (f"Funcao({self.name}, TipoRetorno: {self.return_type})\n"
-                f"{print_indented_list('Argumentos', self.arguments, indent+1)}\n"
-                f"{print_indented_list('Declarações', self.declarations, indent+1)}\n"
+        return (f"Function({self.name}, Return Type: {self.return_type})\n"
+                f"{print_indented_list('Arguments', self.arguments, indent+1)}\n"
+                f"{print_indented_list('Declarations', self.declarations, indent+1)}\n"
                 f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
-                f"{space}END Funcao({self.name})\n")
+                f"{space}END Function({self.name})\n")
 
 
 
@@ -151,9 +151,9 @@ class Subroutine(Program_Unit):
 
     def repr(self, indent = 0):
         space = '  '*indent
-        return (f"{space}Subrotina({self.name},\n"
-                f"{print_indented_list('Argumentos',self.arguments, indent+1)}\n"
-                f"{print_indented_list('Declarações',self.declarations, indent+1)}\n"
+        return (f"{space}Subroutine({self.name},\n"
+                f"{print_indented_list('Arguments',self.arguments, indent+1)}\n"
+                f"{print_indented_list('Declarations',self.declarations, indent+1)}\n"
                 f"{print_indented_list('LabeledStatements',self.labeled_statements, indent+1)}\n")
     
 
@@ -189,7 +189,6 @@ class Expression(Node):
         self.expr_type = None
 
 class BinOp(Expression):
-    """Nó para operações binárias (ex: A + B, NUM .GT. 5)"""
     def __init__(self, left, op:str, right):
         super().__init__()
         self.left = left
@@ -204,7 +203,6 @@ class BinOp(Expression):
         return f"{space}({self.left} {self.op} {self.right})"
 
 class UnOp(Expression):
-    """Nó para operações unárias (ex: -A, .NOT. ISPRIM)"""
     def __init__(self, op:str, expr):
         super().__init__()
         self.op = op
@@ -419,7 +417,7 @@ class FunctionorArraysAccess(Expression):
 
     def repr(self, indent = 0) -> str:
         space = '  '*indent
-        return f"{space}Chamada da funcao/array {self.name} com/em {self.expressionList}"
+        return f"{space}Function or Array Access ({self.name}, {self.expressionList})"
     
 class Read(Statement):
     def __init__(self, format:str, iolist):

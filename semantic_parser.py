@@ -386,6 +386,20 @@ class SemanticParser:
                 self.errors.add_error(f"Right operand of '{op}' must be numeric, got {right_type}", lineno)
                 return None
 
+            if op == '/':
+                if isinstance(node.right, IntVal) and node.right.value == 0:
+                    self.errors.add_error("Division by zero", lineno)
+                elif isinstance(node.right, RealVal) and node.right.value == 0.0:
+                    self.errors.add_error("Division by zero", lineno)
+
+            if op == '**':
+                left_is_zero = (isinstance(node.left, IntVal) and node.left.value == 0) or \
+                               (isinstance(node.left, RealVal) and node.left.value == 0.0)
+                right_is_neg = (isinstance(node.right, IntVal) and node.right.value < 0) or \
+                               (isinstance(node.right, RealVal) and node.right.value < 0.0)
+                if left_is_zero and right_is_neg:
+                    self.errors.add_error("Zero raised to a negative power", lineno)
+
             if left_type == right_type:
                 return left_type
             type_priority = ['INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX']

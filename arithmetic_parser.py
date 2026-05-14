@@ -532,9 +532,9 @@ def p_read(p):
 
 def p_error(p):
     if p:
-        raise SyntaxError(f"Erro de sintaxe próximo a '{p.value}' na linha {p.lineno}")
+        raise SyntaxError(f"Error near '{p.value}' on line {p.lineno}")
     else:
-        raise SyntaxError("Erro de sintaxe no final do ficheiro (Inesperado End Of File)")
+        raise SyntaxError("Error on End Of File (Unexpected End Of File)")
 
 def p_empty(p):
     'empty :'
