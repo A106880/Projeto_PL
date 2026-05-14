@@ -1,6 +1,6 @@
 from node_classes import (
-    Node, FunctionorArraysAccess, Call, Variable, Read, Declaracao, ArrayId,
-    IntVal, RealVal, ProgramaPrincipal, Funcao, Subroutine,
+    Node, FunctionorArraysAccess, Call, Variable, Read, Declaration, ArrayId,
+    IntVal, RealVal, MainProgram, Function, Subroutine,
     LabeledStatement, Assignment, Print, Write, BinOp, UnOp, Goto, Label,
 )
 from semantic_parser import get_name
@@ -19,7 +19,7 @@ class ASTOptimizer:
             main_unit = None
             units_by_name = {}
             for unit in ast:
-                if isinstance(unit, ProgramaPrincipal):
+                if isinstance(unit, MainProgram):
                     main_unit = unit
                 uname = get_name(unit.name) if getattr(unit, 'name', None) is not None else None
                 units_by_name[uname] = unit
@@ -58,7 +58,7 @@ class ASTOptimizer:
 
             new_ast = []
             for unit in ast:
-                if isinstance(unit, ProgramaPrincipal):
+                if isinstance(unit, MainProgram):
                     new_ast.append(unit)
                     continue
                 if getattr(unit, 'name', None) is None:
@@ -118,13 +118,13 @@ class ASTOptimizer:
                 print(f"ERROR: Optimization not implemented for: {method_name}")
             return node
             
-    def optimize_ProgramaPrincipal(self, node):
+    def optimize_MainProgram(self, node):
         if hasattr(node, 'labeled_statements'):
             node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
-    def optimize_Funcao(self, node):
+    def optimize_Function(self, node):
         if hasattr(node, 'labeled_statements'):
             node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
@@ -170,10 +170,10 @@ class ASTOptimizer:
         used_vars = set()
         for stmt in getattr(unit, 'labeled_statements', []) or []:
             self._collect_used_vars(stmt, used_vars)
-        if isinstance(unit, (Funcao, Subroutine)):
+        if isinstance(unit, (Function, Subroutine)):
             for arg in getattr(unit, 'arguments', []) or []:
                 used_vars.add(get_name(arg))
-            if isinstance(unit, Funcao):
+            if isinstance(unit, Function):
                 used_vars.add(get_name(unit.name))
 
         unit_name = get_name(unit.name) if getattr(unit, 'name', None) is not None else "MAIN"

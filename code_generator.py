@@ -1,4 +1,4 @@
-from node_classes import ProgramaPrincipal, Funcao, StringVal, Expression, Variable, FunctionorArraysAccess
+from node_classes import MainProgram, Function, StringVal, Expression, Variable, FunctionorArraysAccess
 
 
 class EnvVar:
@@ -66,7 +66,7 @@ class CodeGenerator:
         else:
             self.generate(ast)
 
-    def generate_ProgramaPrincipal(self, node):
+    def generate_MainProgram(self, node):
         self.instructions.append("START")
         
         unit_name = node.name.name if hasattr(node.name, "name") else (node.name or "MAIN")
@@ -321,7 +321,7 @@ class CodeGenerator:
             self.instructions.append("SWAP")
             self.instructions.append("SUB")
 
-    def generate_Funcao(self, node):
+    def generate_Function(self, node):
         func_name = node.name.name if hasattr(node.name, "name") else node.name
         self.instructions.append(f"{func_name}:")
 

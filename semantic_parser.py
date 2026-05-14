@@ -1,6 +1,6 @@
 from error_classes import SemanticErrorCollector, SemanticError
 from node_classes import (
-    Node, Program_Unit, ProgramaPrincipal, Funcao, Subroutine, Declaracao, ArrayId,
+    Node, Program_Unit, MainProgram, Function, Subroutine, Declaration, ArrayId,
     LabeledStatement, Assignment, Print, Write, Read, Call,
     BinOp, UnOp, Mod, FunctionorArraysAccess, Variable,
     Continue, Return, Goto, AssignedGoto, ComputedGoto,
@@ -158,7 +158,7 @@ class SemanticParser:
 
 
             for unit in ast:
-                if isinstance(unit, Funcao):
+                if isinstance(unit, Function):
                     self.symbols.declare_function(
                         unit.name, unit.return_type,
                         [a.name if isinstance(a, Variable) else a for a in unit.arguments]
@@ -172,7 +172,7 @@ class SemanticParser:
             for unit in ast:
                 self.verify(unit)
 
-    def verify_ProgramaPrincipal(self, node):
+    def verify_MainProgram(self, node):
         self._current_unit_name = node.name
         self._defined_labels.clear()
         self._used_labels.clear()
@@ -187,7 +187,7 @@ class SemanticParser:
         self.symbols.pop_scope()
         self._current_unit_name = None
 
-    def verify_Funcao(self, node):
+    def verify_Function(self, node):
         func_name = get_name(node.name)
         ret_type = get_name(node.return_type)
         self._current_unit_name = func_name
@@ -224,7 +224,7 @@ class SemanticParser:
                 lineno = label_node.lineno if hasattr(label_node, 'lineno') else 0
                 self.errors.add_error(f"Label {label_val} referenced but not defined", lineno)
 
-    def verify_Declaracao(self, node):
+    def verify_Declaration(self, node):
         lineno = node.lineno
         tipo = get_name(node.tipo)
         for var in node.Ids:
@@ -328,7 +328,7 @@ class SemanticParser:
         if info is None:
             if name in self.program_units:
                 func_unit = self.program_units[name]
-                if isinstance(func_unit, Funcao):
+                if isinstance(func_unit, Function):
                     node.is_function = True
                     node.is_array = False
                     expected = len(func_unit.arguments)

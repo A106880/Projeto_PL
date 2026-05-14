@@ -38,7 +38,7 @@ class ArrayId(Node):
         space = '  '*indent
         return f"{space}{self.name}{f'[{self.tamanho}]' if self.tamanho != 0 else ''}" 
 
-class Declaracao(Node):
+class Declaration(Node):
     def __init__(self, tipo:str, ArrayIdList:list[ArrayId]):
         super().__init__()
         self.tipo = tipo
@@ -84,7 +84,7 @@ class LabeledStatement(Node):
 
 
 class Program_Unit(Node):
-    def __init__(self,name:str,declarations:list[Declaracao],labeled_statements:list[LabeledStatement]):
+    def __init__(self,name:str,declarations:list[Declaration],labeled_statements:list[LabeledStatement]):
         super().__init__()
         self.name = name
         self.declarations = declarations
@@ -92,10 +92,11 @@ class Program_Unit(Node):
     
 
 
-class ProgramaPrincipal(Program_Unit):
-    def __init__(self, name:str, declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
+class MainProgram(Program_Unit):
+    def __init__(self, name:str, declarations:list[Declaration], labeled_statements:list[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
         self.tipo_no = 'MAIN_PROGRAM'
+        self.node_type = 'MAIN_PROGRAM'
 
     def __repr__(self):
         return self.repr(0)
@@ -108,9 +109,9 @@ class ProgramaPrincipal(Program_Unit):
                 f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
                 f"{space0}END Program{printIfNotNone(self.name, '(', ')')}\n")
     
-class Funcao(Program_Unit):
-    def __init__(self, return_type:str, name:str, arguments:list[str] 
-                ,declarations:list[Declaracao], labeled_statements:list[LabeledStatement]):
+class Function(Program_Unit):
+    def __init__(self, return_type:str, name:str, arguments:list[str]
+        ,declarations:list[Declaration], labeled_statements:list[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
         self.arguments = arguments
         if return_type == None:

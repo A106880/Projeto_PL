@@ -1,5 +1,5 @@
 import ply.yacc as yacc
-from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label, FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
+from node_classes import MainProgram, Function, Declaration, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label, FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
 from arithmetic_lexer import tokens, lex
 
 
@@ -37,7 +37,7 @@ def p_ProgramUnit(p):
 def p_main(p):
     '''Main : PROGRAM ID NewLines Declarations LabeledStatements END OptNewLines'''
     
-    p[0] = ProgramaPrincipal(
+    p[0] = MainProgram(
         name=p[2],
         declarations=p[4],
         labeled_statements=p[5]
@@ -57,7 +57,7 @@ def p_opt_newlines(p):
 # p2: FunctionDef -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n
 def p_functions(p):
     '''FunctionDef : FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
-    p[0] = Funcao(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
+    p[0] = Function(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
     p[0].lineno = p.lineno(1)
     
 # p4: FunctionType -> INTEGER
@@ -192,7 +192,7 @@ def p_Declarations(p):
 #p36: Declaration -> VarType ArrayIdList\n
 def p_Declaration(p):
     '''Declaration : VarType ArrayIdList NewLines'''
-    nova_declaracao = Declaracao(p[1],p[2])
+    nova_declaracao = Declaration(p[1],p[2])
     p[0] = nova_declaracao
     p[0].lineno = p.lineno(1)
 
