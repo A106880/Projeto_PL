@@ -197,8 +197,8 @@ class SemanticParser:
         self.process_declarations(node.declarations)
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
-        self.check_labels()
         self.collect_labeled_do_bodies(node.labeled_statements)
+        self.check_labels()
         # Salvar tabela de símbolos da unidade
         unit_name = get_name(node.name) if node.name else "MAIN"
         self.unit_symbols[unit_name] = dict(self.symbols._scopes[-1])
@@ -227,15 +227,15 @@ class SemanticParser:
         self.process_declarations(node.declarations)
 
         # Verificar atribuição de retorno
-        global_scope = self.symbols._scopes[0]
-        func_symbol = global_scope.get(func_name)
+        local_scope = self.symbols._scopes[-1]
+        func_symbol = local_scope.get(func_name)
         if func_symbol:
             func_symbol["initialized"] = False
 
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
-        self.check_labels()
         self.collect_labeled_do_bodies(node.labeled_statements)
+        self.check_labels()
 
         # Verificar se houve atribuição ao nome da função
         if func_symbol and not func_symbol.get("initialized"):
@@ -479,9 +479,9 @@ class SemanticParser:
 
     _arithmetic_ops: Set[str] = {'+', '-', '*', '/', '**'}
 
-    _comparison_ops: Set[str] = {'EQ', 'NE', 'LT', 'LE', 'GT', 'GE'}
+    _comparison_ops: Set[str] = {'.EQ.', '.NE.', '.LT.', '.LE.', '.GT.', '.GE.'}
 
-    _logical_ops: Set[str] = {'AND', 'OR'}
+    _logical_ops: Set[str] = {'.AND.', '.OR.'}
 
     _numeric_types: Set[str] = {'INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX'}
 
@@ -490,7 +490,6 @@ class SemanticParser:
         left_type = self.verify_expression(node.left, lineno)
         right_type = self.verify_expression(node.right, lineno)
         op = node.op
-
 
         if left_type is None:
             self.errors.add_error(f"Left operand of '{op}' must doesn't have a type", lineno)
@@ -729,27 +728,29 @@ class SemanticParser:
     def collect_labeled_do_bodies(self, labeled_statements):
         i = 0
         n = len(labeled_statements)
-        new_list = []
+        result = []
         while i < n:
             stmt = labeled_statements[i]
-            real_stmt = getattr(stmt, 'statement', None)
-            if isinstance(real_stmt, LabeledDO) and real_stmt.labeled_statements is None:
-                target_label = real_stmt.label.value
-                body = []
-                j = i+1
-                while j < n:
-                    s = labeled_statements[j]
-                    body.append(s)
-                    if s.label and getattr(s.label, 'value', None) == target_label:
-                        break
-                    j += 1
-                real_stmt.labeled_statements = body
-                new_list.append(stmt)
-                i = j+1
-            else:
-                new_list.append(stmt)
+            if isinstance(stmt.statement, LabeledDO) and stmt.statement.labeled_statements is None:
+                loop = stmt.statement
+                loop_body = []
                 i += 1
-        labeled_statements[:] = new_list
+                while i < n:
+                    next_stmt = labeled_statements[i]
+                    if (next_stmt.label is not None
+                        and next_stmt.label.value == loop.label.value):
+                        break
+                    loop_body.append(next_stmt)
+                    i += 1
+                loop.labeled_statements = loop_body
+                result.append(stmt)
+                if i < n:
+                    result.append(labeled_statements[i])
+                i += 1
+            else:
+                result.append(stmt)
+                i += 1
+        return result
 
     def verify_LabeledDO(self, node):
         allowed_numeric_types = {"INTEGER", "REAL", "DOUBLEPRECISION"}

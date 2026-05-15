@@ -95,13 +95,13 @@ class CodeGenerator:
 
     def generate_LabeledStatement(self, node: Any) -> None:
         if node.label:
-            self.instructions.append(f"{self.curr_unit}{node.label.value}:")
+            self.instructions.append(f"LABEL{node.label.value}:")
             print(f"WARNING: Label generation ({node.label}) is not yet implemented in the CodeGen.")
         if node.statement:
             self.generate(node.statement)
 
-    def generate_Goto(self,node : Any) -> None:
-        self.instructions.append(f"JUMP {self.curr_unit}{node.label.value}")
+   # def generate_Goto(self,node : Any) -> None:
+    #    self.instructions.append(f"JUMP {self.curr_unit}{node.label.value}")
 
     def generate_Assignment(self, node: Any) -> None:
         var_name = node.name.name if hasattr(node.name, "name") else node.name
@@ -661,7 +661,7 @@ class CodeGenerator:
         return "" 
 
     def generate_Goto(self, node):
-        label = f"label_{node.label.value}"
+        label = f"LABEL{node.label.value}"
         self.emit(f"JUMP {label}")
 
     def generate_ComputedGoto(self, node):
@@ -684,7 +684,7 @@ class CodeGenerator:
             self.emit("DUP 0")
             self.emit(f"PUSHI {label.value}")
             self.emit("EQUAL")
-            next_label = self.new_label("after_case")
+            next_label = self.new_label("AFTERCASE")
             self.emit(f"JZ {next_label}")
             self.emit(f"JUMP label{label.value}")
             self.emit_label(next_label)
