@@ -246,6 +246,33 @@ class SemanticParser:
         self._in_function = False
         self._current_unit_name = None
 
+
+    def verify_Subroutine(self, node):
+        subroutine_name = get_name(node.name)
+        self._current_unit_name = subroutine_name
+        self._in_function = True
+        self._defined_labels.clear()
+        self._used_labels.clear()
+        self.symbols.push_scope()
+
+        seen_args = set()
+        for arg in node.arguments:
+            name = get_name(arg)
+            if name in seen_args:
+                self.errors.add_error(f"Duplicate argument name in subroutine {subroutine_name}: {name}", node.lineno)
+            else:
+                seen_args.add(name)
+                self.symbols.declare(name, None)
+
+        self.process_declarations(node.declarations, node)
+        self.process_labeled_statements(node.labeled_statements)
+        self.check_labels()
+        # Salvar tabela de símbolos da unidade
+        self.unit_symbols[subroutine_name] = dict(self.symbols._scopes[-1])
+        self.symbols.pop_scope()
+        self._in_function = False
+        self._current_unit_name = None
+
     def check_labels(self) -> None:
         defined_values = set(self._defined_labels.keys())
         for label_node in self._used_labels:
@@ -278,7 +305,6 @@ class SemanticParser:
         if info.get("is_subroutine"):
             self.errors.add_error(f"Cannot assign to subroutine name: {target_name}", lineno)
             return
-
         if isinstance(assign.name, FunctionorArraysAccess):
             if info.get("is_function"):
                 self.errors.add_error(f"Cannot assign to function call: {target_name}", lineno)
@@ -311,6 +337,8 @@ class SemanticParser:
             self.errors.add_error(f"Unknown type for variable {target_name}: {assign_type}", lineno)
         elif assign_type_translated != value_type and value_type is not None:
             self.errors.add_error(f"Type mismatch in assignment to {target_name}: expected {assign_type}, got {value_result}", lineno)
+        elif value_type is None:
+            self.errors.add_error(f"Type error, assinging no type to variable of type {assign_type} ")
 
         self.symbols.initialize(target_name)
 
@@ -353,6 +381,7 @@ class SemanticParser:
         lineno = node.lineno
         name = get_name(node.name)
         info = self.symbols.lookup(name)
+        
         if info is None:
             if name in self.program_units:
                 func_unit = self.program_units[name]
@@ -422,7 +451,9 @@ class SemanticParser:
                 accessIndex = node.expressionList[0].value
                 if (accessIndex > arraySize or accessIndex < 1):
                     self.errors.add_error(f"Index {accessIndex} is out of bounds for array {name} with size {arraySize}", lineno)
-
+        else:
+            self.errors.add_error(f"{name} is not a function nor an array.")
+            return None
         for expr in node.expressionList:
             self.verify_expression(expr, lineno)
         return info.get("type")
@@ -443,7 +474,11 @@ class SemanticParser:
         op = node.op
 
 
-        if left_type is None or right_type is None:
+        if left_type is None:
+            self.errors.add_error(f"Left operand of '{op}' must doesn't have a type", lineno)
+            return None
+        if right_type is None:
+            self.errors.add_error(f"Right operand of '{op}' must doesn't have a type", lineno)
             return None
 
         if op in self._arithmetic_ops:
@@ -553,7 +588,7 @@ class SemanticParser:
 
     def verify_expression(self, expr: Expression, lineno: Optional[int] = None) -> Optional[str]:
         if expr is None:
-             
+            
             return None
             
         current_lineno = expr.lineno if expr.lineno is not None else lineno
@@ -579,10 +614,15 @@ class SemanticParser:
             if isinstance(expr, DoublePrecisionComplexVal):
                 return "DOUBLECOMPLEX"
             if isinstance(expr, Node):
-                return self.verify(expr)
+                print(expr)
+                r = self.verify(expr)
+                print(r)
+                return r
             return None
-
+        
         t = _get_type()
+
+
         if isinstance(expr, Node):
             expr.expr_type = t
         return t
