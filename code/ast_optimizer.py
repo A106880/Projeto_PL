@@ -355,11 +355,23 @@ class ASTOptimizer:
         node.left = self.optimize_node(node.left)
         node.right = self.optimize_node(node.right)
 
+        if isinstance(node.right, IntVal):
+            v2 = node.right.value
+            if v2 == 0:
+                if self.semantic_info is not None:
+                    original_right = node.right
+                    already_literal_zero = isinstance(original_right, IntVal) and original_right.value == 0
+                    if already_literal_zero:
+                        lineno = getattr(node, 'lineno', None)
+                        self.semantic_info.errors.add_error("Modulo by zero detected", lineno)
+                return node
+
         if isinstance(node.left, IntVal) and isinstance(node.right, IntVal):
             v1 = node.left.value
             v2 = node.right.value
             try:
                 if v2 == 0:
+                    
                     if self.semantic_info is not None:
                         original_right = node.right
                         already_literal_zero = isinstance(original_right, IntVal) and original_right.value == 0

@@ -10,6 +10,7 @@ class EnvVar:
         self.offset: int = offset
         self.type: str = var_type
         self.is_ref: bool = is_ref
+        
 
 
 class CodeGenerator:
@@ -73,6 +74,9 @@ class CodeGenerator:
         self.instructions.append("START")
         
         unit_name = node.name.name if hasattr(node.name, "name") else (node.name or "MAIN")
+        
+        self.curr_unit = unit_name
+
         symbols = self.semantic_info.unit_symbols.get(unit_name, {})
         
         for name, info in symbols.items():
@@ -91,9 +95,13 @@ class CodeGenerator:
 
     def generate_LabeledStatement(self, node: Any) -> None:
         if node.label:
+            self.instructions.append(f"{self.curr_unit}{node.label.value}:")
             print(f"WARNING: Label generation ({node.label}) is not yet implemented in the CodeGen.")
         if node.statement:
             self.generate(node.statement)
+
+    def generate_Goto(self,node : Any) -> None:
+        self.instructions.append(f"JUMP {self.curr_unit}{node.label.value}")
 
     def generate_Assignment(self, node: Any) -> None:
         var_name = node.name.name if hasattr(node.name, "name") else node.name
@@ -447,6 +455,7 @@ class CodeGenerator:
     def generate_Function(self, node: Any) -> None:
         func_name = node.name.name if hasattr(node.name, "name") else node.name
         self.instructions.append(f"{func_name}:")
+        self.curr_unit = func_name
 
         # Salvar scope anterior
         old_locals = self.locals
@@ -493,6 +502,7 @@ class CodeGenerator:
     
     def generate_Subroutine(self, node: Any) -> None:
         sub_name = node.name.name if hasattr(node.name, "name") else node.name
+        self.curr_unit = sub_name
         self.instructions.append(f"{sub_name}:")
 
         # Salvar scope anterior
