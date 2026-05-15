@@ -20,6 +20,7 @@ class CodeGenerator:
         self.gp_offset: int = 0
         self.fp_offset: int = 0
         self.semantic_info: Optional[Any] = None
+        self._label_count: int = 0
 
     def set_semantic_info(self, parser: Any) -> None:
         self.semantic_info = parser
@@ -230,19 +231,25 @@ class CodeGenerator:
     def generate_BinOp(self, node: Any) -> None:
         op = node.op
         t = getattr(node, "expr_type", "INTEGER")
+        l_type = getattr(node.left, "expr_type", "INTEGER")
+        r_type = getattr(node.right, "expr_type", "INTEGER")
         
-        if t == "COMPLEX":
-            l_type = getattr(node.left, "expr_type", "INTEGER")
-            r_type = getattr(node.right, "expr_type", "INTEGER")
+        # Se algum dos lados for COMPLEX, ambos devem ser tratados como tal na stack
+        is_any_complex = (l_type == "COMPLEX" or r_type == "COMPLEX")
+        
+        # Gerar o Lado Esquerdo (sempre necessário)
+        self.generate(node.left)
+        if is_any_complex and l_type != "COMPLEX":
+            self.instructions.append("PUSHF 0.0")
             
-            self.generate(node.left)
-            if l_type != "COMPLEX":
-                self.instructions.append("PUSHF 0.0")
-            
+        # Para operadores lógicos (.AND., .OR.), o Lado Direito é gerado lá dentro (Curto-circuito)
+        if op not in (".AND.", ".OR."):
             self.generate(node.right)
-            if r_type != "COMPLEX":
+            if is_any_complex and r_type != "COMPLEX":
                 self.instructions.append("PUSHF 0.0")
-            
+
+        # 1. Aritmética Complexa
+        if t == "COMPLEX":
             if op in ("+", "-"):
                 prefix = "F"
                 self.instructions.append("SWAP")
@@ -321,12 +328,7 @@ class CodeGenerator:
                 self.instructions.append("FDIV")
                 return
 
-        self.generate(node.left)
-        self.generate(node.right)
-        
         # Determinar prefixo (F se algum for Real)
-        l_type = getattr(node.left, "expr_type", "")
-        r_type = getattr(node.right, "expr_type", "")
         prefix = "F" if (l_type == "REAL" or r_type == "REAL") else ""
         
         if op == "+":
@@ -340,8 +342,6 @@ class CodeGenerator:
         
         # Relacionais
         elif op in (".EQ.", ".NE."):
-            l_type = getattr(node.left, "expr_type", "INTEGER")
-            r_type = getattr(node.right, "expr_type", "INTEGER")
             is_complex_comp = (l_type == "COMPLEX" or r_type == "COMPLEX")
 
             if op == ".EQ.":
@@ -353,13 +353,13 @@ class CodeGenerator:
                     self.instructions.append("STOREL -1")
                     self.instructions.append("PUSHL -1")
                     self.instructions.append("PUSHL -3")
-                    self.instructions.append("FEQ")
+                    self.instructions.append("EQUAL")
                     self.instructions.append("PUSHL -2")
                     self.instructions.append("PUSHL -4")
-                    self.instructions.append("FEQ")
-                    self.instructions.append("MUL") 
+                    self.instructions.append("EQUAL")
+                    self.instructions.append("AND") 
                     return
-                self.instructions.append(f"{prefix}EQ")
+                self.instructions.append("EQUAL")
             else: # .NE.
                 if is_complex_comp:
                     self.instructions.append("STOREL -4")
@@ -368,31 +368,59 @@ class CodeGenerator:
                     self.instructions.append("STOREL -1")
                     self.instructions.append("PUSHL -1")
                     self.instructions.append("PUSHL -3")
-                    self.instructions.append("FNE")
+                    self.instructions.append("EQUAL")
+                    self.instructions.append("NOT")
                     self.instructions.append("PUSHL -2")
                     self.instructions.append("PUSHL -4")
-                    self.instructions.append("FNE")
-                    self.instructions.append("ADD")
-                    self.instructions.append("PUSHI 0")
-                    self.instructions.append("GT")
+                    self.instructions.append("EQUAL")
+                    self.instructions.append("NOT")
+                    self.instructions.append("OR")
                     return
-                self.instructions.append(f"{prefix}NE")
+                self.instructions.append("EQUAL")
+                self.instructions.append("NOT")
         elif op == ".LT.":
-            self.instructions.append(f"{prefix}LT")
+            self.instructions.append(f"{prefix}INF")
         elif op == ".LE.":
-            self.instructions.append(f"{prefix}LE")
+            self.instructions.append(f"{prefix}INFEQ")
         elif op == ".GT.":
-            self.instructions.append(f"{prefix}GT")
+            self.instructions.append(f"{prefix}SUP")
         elif op == ".GE.":
-            self.instructions.append(f"{prefix}GE")
+            self.instructions.append(f"{prefix}SUPEQ")
         
-        # Lógicos
-        elif op in (".AND.", "AND"):
-            self.instructions.append("MUL") 
-        elif op in (".OR.", "OR"): 
-            self.instructions.append("ADD")
-            self.instructions.append("PUSHI 0")
-            self.instructions.append("GT")
+        # Lógicos com Curto-circuito
+        elif op == ".AND.":
+            self._label_count += 1
+            lbl_false = f"scf{self._label_count}"
+            lbl_end = f"sce{self._label_count}"
+            
+            # Já temos o resultado do Left na stack
+            self.instructions.append("DUP 1")
+            self.instructions.append(f"JZ {lbl_false}")
+            self.instructions.append("POP 1")
+            self.generate(node.right)
+            self.instructions.append(f"JUMP {lbl_end}")
+            
+            self.instructions.append(f"{lbl_false}:")
+            
+            self.instructions.append(f"{lbl_end}:")
+            return
+
+        elif op == ".OR.": 
+            self._label_count += 1
+            lbl_true = f"sct{self._label_count}"
+            lbl_end = f"soe{self._label_count}"
+            
+            self.instructions.append("DUP 1")
+            self.instructions.append("NOT")
+            self.instructions.append(f"JZ {lbl_true}")
+            self.instructions.append("POP 1")
+            self.generate(node.right)
+            self.instructions.append(f"JUMP {lbl_end}")
+            
+            self.instructions.append(f"{lbl_true}:")
+            
+            self.instructions.append(f"{lbl_end}:")
+            return
 
     def generate_UnOp(self, node: Any) -> None:
         self.generate(node.expr)

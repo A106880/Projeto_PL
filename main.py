@@ -77,7 +77,7 @@ if __name__ == "__main__":
             generator.generate_Program_Unit(ast)
             assembly_code = generator.get_assembly()
             
-            with open("assembly.vm", "w") as f:
+            with open("assembly.vm", "w", newline='\n') as f:
                 f.write(assembly_code)
                 
             print("Machine code generated successfully!")

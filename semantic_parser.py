@@ -465,12 +465,14 @@ class SemanticParser:
                 self.errors.add_error(f"Unary '{op}' requires numeric operand, got {expr_type}", lineno)
                 return None
             return expr_type
-
-        elif op == 'NOT':
-            if expr_type != 'LOGICAL':
-                self.errors.add_error(f"'.NOT.' requires LOGICAL operand, got {expr_type}", lineno)
+        
+        elif op == ".NOT.":
+            if expr_type != "LOGICAL":
+                self.errors.add_error(f"Operand of '.NOT.' must be LOGICAL, got {expr_type}", lineno)
                 return None
             return "LOGICAL"
+
+        return None
 
         return None
 

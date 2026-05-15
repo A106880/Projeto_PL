@@ -6,7 +6,7 @@ from node_classes import (
     Node, FunctionorArraysAccess, Call, Variable, Read, Declaration, ArrayId,
     IntVal, RealVal, MainProgram, Function, Subroutine,
     LabeledStatement, Assignment, Print, Write, BinOp, UnOp, Goto, Label,
-    Expression, Statement, Program_Unit,
+    Expression, Statement, Program_Unit, LogicalVal, Return
 )
 from semantic_parser import get_name, SemanticParser
 
@@ -239,7 +239,31 @@ class ASTOptimizer:
         node.left = self.optimize_node(node.left)
         node.right = self.optimize_node(node.right)
         
-        if type(node.left) in (IntVal, RealVal) and type(node.right) in (IntVal, RealVal):
+        # Otimização de Constantes Lógicas
+        if getattr(node, 'expr_type', None) == "LOGICAL":
+            # Para .AND.
+            if node.op == ".AND.":
+                if isinstance(node.left, LogicalVal):
+                    if not node.left.value:
+                        return LogicalVal(False) # False .AND. x = False
+                    return node.right # True .AND. x = x
+                if isinstance(node.right, LogicalVal):
+                    if not node.right.value:
+                        return LogicalVal(False)
+                    return node.left
+            
+            # Para .OR.
+            if node.op == ".OR.":
+                if isinstance(node.left, LogicalVal):
+                    if node.left.value:
+                        return LogicalVal(True) # True .OR. x = True
+                    return node.right # False .OR. x = x
+                if isinstance(node.right, LogicalVal):
+                    if node.right.value:
+                        return LogicalVal(True)
+                    return node.left
+
+        if isinstance(node.left, (IntVal, RealVal)) and isinstance(node.right, (IntVal, RealVal)):
             op = node.op
             v1 = node.left.value
             v2 = node.right.value
@@ -297,34 +321,6 @@ class ASTOptimizer:
                 if self.semantic_info is not None:
                     lineno = getattr(node, 'lineno', None)
                     self.semantic_info.errors.add_error(f"Arithmetic error detected after constant folding: {e}", lineno)
-            except Exception:
-                pass
-        return node
-
-    def optimize_UnOp(self, node):
-        node.expr = self.optimize_node(node.expr)
-        
-        if type(node.expr) in (IntVal, RealVal):
-            op = node.op
-            v = node.expr.value
-            try:
-                res = None
-                if op == '+':
-                    res = +v
-                elif op == '-':
-                    res = -v
-                
-                if res is not None:
-                    self.optimized_nodes += 1
-                    if isinstance(res, int) or type(node.expr) is IntVal:
-                        new_node = IntVal(int(res))
-                    else:
-                        new_node = RealVal(float(res))
-                    
-                    if hasattr(node, 'expr_type'):
-                        new_node.expr_type = node.expr_type
-                    new_node.lineno = node.lineno
-                    return new_node
             except Exception:
                 pass
         return node
