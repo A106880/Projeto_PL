@@ -339,17 +339,51 @@ class CodeGenerator:
             self.instructions.append(f"{prefix}DIV")
         
         # Relacionais
-        elif op in (".EQ.", "EQ"):
-            self.instructions.append(f"{prefix}EQ")
-        elif op in (".NE.", "NE"):
-            self.instructions.append(f"{prefix}NE")
-        elif op in (".LT.", "LT"):
+        elif op in (".EQ.", ".NE."):
+            l_type = getattr(node.left, "expr_type", "INTEGER")
+            r_type = getattr(node.right, "expr_type", "INTEGER")
+            is_complex_comp = (l_type == "COMPLEX" or r_type == "COMPLEX")
+
+            if op == ".EQ.":
+                if is_complex_comp:
+                    # R1, I1, R2, I2
+                    self.instructions.append("STOREL -4")
+                    self.instructions.append("STOREL -3")
+                    self.instructions.append("STOREL -2")
+                    self.instructions.append("STOREL -1")
+                    self.instructions.append("PUSHL -1")
+                    self.instructions.append("PUSHL -3")
+                    self.instructions.append("FEQ")
+                    self.instructions.append("PUSHL -2")
+                    self.instructions.append("PUSHL -4")
+                    self.instructions.append("FEQ")
+                    self.instructions.append("MUL") 
+                    return
+                self.instructions.append(f"{prefix}EQ")
+            else: # .NE.
+                if is_complex_comp:
+                    self.instructions.append("STOREL -4")
+                    self.instructions.append("STOREL -3")
+                    self.instructions.append("STOREL -2")
+                    self.instructions.append("STOREL -1")
+                    self.instructions.append("PUSHL -1")
+                    self.instructions.append("PUSHL -3")
+                    self.instructions.append("FNE")
+                    self.instructions.append("PUSHL -2")
+                    self.instructions.append("PUSHL -4")
+                    self.instructions.append("FNE")
+                    self.instructions.append("ADD")
+                    self.instructions.append("PUSHI 0")
+                    self.instructions.append("GT")
+                    return
+                self.instructions.append(f"{prefix}NE")
+        elif op == ".LT.":
             self.instructions.append(f"{prefix}LT")
-        elif op in (".LE.", "LE"):
+        elif op == ".LE.":
             self.instructions.append(f"{prefix}LE")
-        elif op in (".GT.", "GT"):
+        elif op == ".GT.":
             self.instructions.append(f"{prefix}GT")
-        elif op in (".GE.", "GE"):
+        elif op == ".GE.":
             self.instructions.append(f"{prefix}GE")
         
         # Lógicos

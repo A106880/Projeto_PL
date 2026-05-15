@@ -424,6 +424,12 @@ class SemanticParser:
             if left_type not in self._numeric_types or right_type not in self._numeric_types:
                 self.errors.add_error(f"Comparison operator '.{op}.' requires numeric operands, got {left_type} and {right_type}", lineno)
                 return None
+            
+            # Impedir comparação de ordem em complexos
+            if left_type == "COMPLEX" or right_type == "COMPLEX":
+                if op in (".LT.", ".LE.", ".GT.", ".GE.", "LT", "LE", "GT", "GE"):
+                    self.errors.add_error(f"Operadores relacionais de ordem ({op}) nao sao permitidos para numeros complexos.", lineno)
+
             return "LOGICAL"
 
         elif op in self._logical_ops:
