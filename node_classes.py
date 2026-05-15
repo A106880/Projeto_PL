@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Union, Optional
+from typing import Any, Union, Optional, List
 
 class Node:
     """Classe base genérica para todos os nós da AST."""
@@ -14,7 +14,7 @@ class Node:
     def repr(self, indent: int = 0)->str:
         return ""
     
-def print_indented_list(name:str, list_to_print:list[Any], indent:int = 0) -> str:
+def print_indented_list(name:str, list_to_print:List[Any], indent:int = 0) -> str:
     space0 = '  '*indent
     space1 = '  '*(indent+1)
     if any(isinstance(elem, Node) for elem in list_to_print):
@@ -33,7 +33,7 @@ class ArrayId(Node):
         super().__init__()
         self.name = name
         if(tamanho is None):
-            self.tamanho = 0 # ou 1 caso se queira fazer singleton == array de 1 elemento 
+            self.tamanho = 0 
         else:
             self.tamanho = tamanho
 
@@ -46,9 +46,9 @@ class ArrayId(Node):
 
 class Declaration(Node):
     tipo: str
-    Ids: list[ArrayId]
+    Ids: List[ArrayId]
 
-    def __init__(self, tipo:str, ArrayIdList:list[ArrayId]):
+    def __init__(self, tipo:str, ArrayIdList:List[ArrayId]):
         super().__init__()
         self.tipo = tipo
         self.Ids = ArrayIdList
@@ -98,10 +98,10 @@ class LabeledStatement(Node):
 
 class Program_Unit(Node):
     name: str
-    declarations: list[Declaration]
-    labeled_statements: list[LabeledStatement]
+    declarations: List[Declaration]
+    labeled_statements: List[LabeledStatement]
 
-    def __init__(self,name:str,declarations:list[Declaration],labeled_statements:list[LabeledStatement]):
+    def __init__(self,name:str,declarations:List[Declaration],labeled_statements:List[LabeledStatement]):
         super().__init__()
         self.name = name
         self.declarations = declarations
@@ -113,7 +113,7 @@ class MainProgram(Program_Unit):
     tipo_no: str
     node_type: str
 
-    def __init__(self, name:str, declarations:list[Declaration], labeled_statements:list[LabeledStatement]):
+    def __init__(self, name:str, declarations:List[Declaration], labeled_statements:List[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
         self.tipo_no = 'MAIN_PROGRAM'
         self.node_type = 'MAIN_PROGRAM'
@@ -129,11 +129,11 @@ class MainProgram(Program_Unit):
                 f"{space0}END Program{printIfNotNone(self.name, '(', ')')}\n")
     
 class Function(Program_Unit):
-    arguments: list[Union[Variable, str]]
+    arguments: List[Union[Variable, str]]
     return_type: str
 
-    def __init__(self, return_type:Optional[str], name:str, arguments:list[Union[Variable, str]]
-        ,declarations:list[Declaration], labeled_statements:list[LabeledStatement]):
+    def __init__(self, return_type:Optional[str], name:str, arguments:List[Union[Variable, str]]
+        ,declarations:List[Declaration], labeled_statements:List[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
         self.arguments = arguments
         if return_type is None:
@@ -161,10 +161,10 @@ class Function(Program_Unit):
 
 
 class Subroutine(Program_Unit):
-    arguments: list[Union[Variable, str]]
+    arguments: List[Union[Variable, str]]
 
-    def __init__(self, name:str, arguments:list[Union[Variable, str]], 
-                 declarations:list[Declaration], labeled_statements:list[LabeledStatement]):
+    def __init__(self, name:str, arguments:List[Union[Variable, str]], 
+                 declarations:List[Declaration], labeled_statements:List[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
         self.arguments = arguments
         
@@ -253,9 +253,9 @@ class UnOp(Expression):
 
 class Print(Statement):
     format: str
-    iolist: list[Expression]
+    iolist: List[Expression]
 
-    def __init__(self,format:str,iolist:list[Expression]):
+    def __init__(self,format:str,iolist:List[Expression]):
         super().__init__()
         self.format = format
         self.iolist = iolist
@@ -269,9 +269,9 @@ class Print(Statement):
 class Write(Statement):
     unit: Any
     format: str
-    iolist: list[Expression]
+    iolist: List[Expression]
 
-    def __init__(self, unit, format:str, iolist:list[Expression]):
+    def __init__(self, unit, format:str, iolist:List[Expression]):
         super().__init__()
         self.unit = unit
         self.format = format
@@ -332,10 +332,10 @@ class Goto(Statement):
         return f"GOTO {self.label}"
 
 class ComputedGoto(Statement):
-    labels: list[Any]
+    labels: List[Any]
     expr: Expression
 
-    def __init__(self, labels:list[Label], expr:Expression):
+    def __init__(self, labels:List[Label], expr:Expression):
         super().__init__()
         self.labels = labels
         self.expr = expr
@@ -348,7 +348,7 @@ class ComputedGoto(Statement):
 
 class AssignedGoto(Statement):
     var: Any
-    labels: Optional[list[Any]]
+    labels: Optional[List[Any]]
 
     def __init__(self, var, labels=None):
         super().__init__()
@@ -400,10 +400,10 @@ class LogicIf(Statement):
 
 class BlockIf(Statement):
     exp: Expression
-    thenBody: list[LabeledStatement]
-    elseBody: Optional[Union[list[LabeledStatement], BlockIf]]
+    thenBody: List[LabeledStatement]
+    elseBody: Optional[Union[List[LabeledStatement], BlockIf]]
 
-    def __init__(self, exp:Expression, thenBody:list[LabeledStatement], elseBody:Optional[Union[list[LabeledStatement], BlockIf]] = None):
+    def __init__(self, exp:Expression, thenBody:List[LabeledStatement], elseBody:Optional[Union[List[LabeledStatement], BlockIf]] = None):
         super().__init__()
         self.exp = exp #condição
         self.thenBody = thenBody #conjunto de statements
@@ -445,7 +445,7 @@ class Mod(Statement):
 
 class Call(Statement):
     subroutine: Any
-    arguments: list[Expression]
+    arguments: List[Expression]
 
     def __init__(self, subroutine,arguments):
         super().__init__()
@@ -469,7 +469,7 @@ class Call(Statement):
 #NOTA: Em FORTRAN 77, as chamadas de funcoes e acessos a array(incluindo arrays de arrays) tem a mesma sintaxe
 class FunctionorArraysAccess(Expression):
     name: str
-    expressionList: list[Expression]
+    expressionList: List[Expression]
     is_array: bool
     is_function: bool
 
@@ -497,7 +497,7 @@ class FunctionorArraysAccess(Expression):
     
 class Read(Statement):
     format: str
-    iolist: list[Any]
+    iolist: List[Any]
 
     def __init__(self, format:str, iolist):
         super().__init__()
@@ -515,7 +515,7 @@ class LabeledDO(Statement):
     control_var: str
     control_var_init_value: Any
     iterations_number: Any
-    labeled_statements: Optional[list[LabeledStatement]]
+    labeled_statements: Optional[List[LabeledStatement]]
     step: Any
 
     def __init__(self, label:Label, control_var:str, control_var_init_value, iterations_number, labeled_statements = None, step = 1):
@@ -537,10 +537,10 @@ class BlockDO(Statement):
     control_var: str
     init_value: Any
     max_value: Any
-    labeled_statements: list[LabeledStatement]
+    labeled_statements: List[LabeledStatement]
     step: Any
 
-    def __init__(self, control_var:str, init_value, max_value, labeled_statements:list[LabeledStatement], step = 1):
+    def __init__(self, control_var:str, init_value, max_value, labeled_statements:List[LabeledStatement], step = 1):
         super().__init__()
         self.control_var = control_var
         self.init_value = init_value

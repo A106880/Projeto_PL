@@ -117,14 +117,19 @@ class CodeGenerator:
 
                 # 3. Gerar o valor a ser guardado e fazer STORE 0
                 self.generate(node.value)
+                val_type = getattr(node.value, "expr_type", "INTEGER")
+                if var.type == "COMPLEX" and val_type != "COMPLEX":
+                    self.instructions.append("PUSHF 0.0")
                 self.instructions.append("STORE 0")
             return
 
         # Atribuição normal a variável
         self.generate(node.value)
         var = self.lookup(var_name)
-
         if var:
+            val_type = getattr(node.value, "expr_type", "INTEGER")
+            if var.type == "COMPLEX" and val_type != "COMPLEX":
+                self.instructions.append("PUSHF 0.0")
             is_complex = var.type == "COMPLEX"
             if var.is_ref:
                 if is_complex:
@@ -227,8 +232,16 @@ class CodeGenerator:
         t = getattr(node, "expr_type", "INTEGER")
         
         if t == "COMPLEX":
+            l_type = getattr(node.left, "expr_type", "INTEGER")
+            r_type = getattr(node.right, "expr_type", "INTEGER")
+            
             self.generate(node.left)
+            if l_type != "COMPLEX":
+                self.instructions.append("PUSHF 0.0")
+            
             self.generate(node.right)
+            if r_type != "COMPLEX":
+                self.instructions.append("PUSHF 0.0")
             
             if op in ("+", "-"):
                 prefix = "F"
@@ -242,7 +255,8 @@ class CodeGenerator:
                 return
             
             elif op == "*":
-                # Vamos guardar tudo em temporários
+                # (R1, I1) * (R2, I2) -> (R1*R2 - I1*I2), (R1*I2 + I1*R2)
+                # Stack inicial: R1, I1, R2, I2
                 self.instructions.append("STOREL -4") # I2
                 self.instructions.append("STOREL -3") # R2
                 self.instructions.append("STOREL -2") # I1
@@ -265,6 +279,46 @@ class CodeGenerator:
                 self.instructions.append("PUSHL -3")
                 self.instructions.append("FMUL")
                 self.instructions.append("FADD")
+                return
+
+            elif op == "/":
+                # (R1, I1) / (R2, I2) -> [(ac+bd)/D] + [(bc-ad)/D]i onde D = c^2+d^2
+                self.instructions.append("STOREL -4") # I2 (d)
+                self.instructions.append("STOREL -3") # R2 (c)
+                self.instructions.append("STOREL -2") # I1 (b)
+                self.instructions.append("STOREL -1") # R1 (a)
+
+                # 1. Calcular Denominador D = c^2 + d^2
+                self.instructions.append("PUSHL -3")
+                self.instructions.append("PUSHL -3")
+                self.instructions.append("FMUL")
+                self.instructions.append("PUSHL -4")
+                self.instructions.append("PUSHL -4")
+                self.instructions.append("FMUL")
+                self.instructions.append("FADD")
+                self.instructions.append("STOREL -5") # D
+
+                # 2. Parte Real: (ac + bd) / D
+                self.instructions.append("PUSHL -1")
+                self.instructions.append("PUSHL -3")
+                self.instructions.append("FMUL")
+                self.instructions.append("PUSHL -2")
+                self.instructions.append("PUSHL -4")
+                self.instructions.append("FMUL")
+                self.instructions.append("FADD")
+                self.instructions.append("PUSHL -5")
+                self.instructions.append("FDIV")
+
+                # 3. Parte Imag: (bc - ad) / D
+                self.instructions.append("PUSHL -2")
+                self.instructions.append("PUSHL -3")
+                self.instructions.append("FMUL")
+                self.instructions.append("PUSHL -1")
+                self.instructions.append("PUSHL -4")
+                self.instructions.append("FMUL")
+                self.instructions.append("FSUB")
+                self.instructions.append("PUSHL -5")
+                self.instructions.append("FDIV")
                 return
 
         self.generate(node.left)
