@@ -120,7 +120,7 @@ class ASTOptimizer:
             return method(node)
         else:
             if node is not None:
-                # print(f"ERROR: Optimization not implemented for: {method_name}")
+                print(f"ERROR: Optimization not implemented for: {method_name}")
                 pass
             return node
             
@@ -241,23 +241,21 @@ class ASTOptimizer:
         
         # Otimização de Constantes Lógicas
         if getattr(node, 'expr_type', None) == "LOGICAL":
-            # Para .AND.
             if node.op == ".AND.":
                 if isinstance(node.left, LogicalVal):
                     if not node.left.value:
-                        return LogicalVal(False) # False .AND. x = False
-                    return node.right # True .AND. x = x
+                        return LogicalVal(False) 
+                    return node.right 
                 if isinstance(node.right, LogicalVal):
                     if not node.right.value:
                         return LogicalVal(False)
                     return node.left
             
-            # Para .OR.
             if node.op == ".OR.":
                 if isinstance(node.left, LogicalVal):
                     if node.left.value:
-                        return LogicalVal(True) # True .OR. x = True
-                    return node.right # False .OR. x = x
+                        return LogicalVal(True) 
+                    return node.right 
                 if isinstance(node.right, LogicalVal):
                     if node.right.value:
                         return LogicalVal(True)

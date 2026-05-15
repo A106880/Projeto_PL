@@ -220,9 +220,26 @@ class SemanticParser:
 
         self.symbols.declare(func_name, ret_type)
         self.process_declarations(node.declarations)
+
+        # Verificar atribuição de retorno
+        global_scope = self.symbols._scopes[0]
+        func_symbol = global_scope.get(func_name)
+        if func_symbol:
+            func_symbol["initialized"] = False
+
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
         self.check_labels()
+
+        # Verificar se houve atribuição ao nome da função
+        if func_symbol and not func_symbol.get("initialized"):
+            lineno = node.lineno if hasattr(node, "lineno") else 0
+            self.errors.add_error(f"Return variable '{func_name}' is not assigned a value in function", lineno)
+
+        # Garantir que a função fica marcada como inicializada para os chamadores
+        if func_symbol:
+            func_symbol["initialized"] = True
+
         # Salvar tabela de símbolos da unidade
         self.unit_symbols[func_name] = dict(self.symbols._scopes[-1])
         self.symbols.pop_scope()
@@ -346,13 +363,32 @@ class SemanticParser:
                     actual = len(node.expressionList)
                     if expected != actual:
                         self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {expected}, got {actual}", lineno)
-                    for expr in node.expressionList:
-                        self.verify_expression(expr, lineno)
+                    
+                    # Verificação de tipos dos argumentos
+                    for i, expr in enumerate(node.expressionList):
+                        expr_type = self.verify_expression(expr, lineno)
+                        if i < expected:
+                            arg_name = get_name(func_unit.arguments[i])
+                            # Procurar tipo na declaração da função chamada
+                            expected_type = None
+                            for decl in func_unit.declarations:
+                                for decl_id in decl.Ids:
+                                    if get_name(decl_id.name) == arg_name:
+                                        expected_type = get_name(decl.tipo)
+                                        break
+                                if expected_type:
+                                    break
+                            
+                            if expr_type and expected_type and expr_type != expected_type:
+                                self.errors.add_error(f"Type mismatch for argument {i+1} of function {name}: expected {expected_type}, got {expr_type}", lineno)
+                    
                     return get_name(func_unit.return_type)
+            
             self.errors.add_error(f"Undeclared function or array: {name}", lineno)
             for expr in node.expressionList:
                 self.verify_expression(expr, lineno)
             return None
+
         if info.get("is_function"):
             node.is_function = True
             expected_params = info.get("params", [])
@@ -360,6 +396,25 @@ class SemanticParser:
                 exp_len = len(expected_params)
                 exprLis = len(node.expressionList)
                 self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {exp_len}, got {exprLis}", lineno)
+            
+            # Verificação de tipos dos argumentos (procurar na unidade correspondente se disponível)
+            func_unit = self.program_units.get(name)
+            for i, expr in enumerate(node.expressionList):
+                expr_type = self.verify_expression(expr, lineno)
+                if func_unit and isinstance(func_unit, Function) and i < len(expected_params):
+                    arg_name = expected_params[i]
+                    expected_type = None
+                    for decl in func_unit.declarations:
+                        for decl_id in decl.Ids:
+                            if get_name(decl_id.name) == arg_name:
+                                expected_type = get_name(decl.tipo)
+                                break
+                        if expected_type:
+                            break
+                    if expr_type and expected_type and expr_type != expected_type:
+                        self.errors.add_error(f"Type mismatch for argument {i+1} of function {name}: expected {expected_type}, got {expr_type}", lineno)
+            return info.get("type")
+
         elif info.get("is_array"):
             node.is_array = True
             arraySize = info.get("array_size", 0)
