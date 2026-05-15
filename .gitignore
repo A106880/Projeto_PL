@@ -211,6 +211,5 @@ __marimo__/
 parser.out
 parsetab.py
 
-exemplo*
 
-testes/
+# testes/

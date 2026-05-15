@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Dict, List, Any
-from node_classes import StringVal, Variable, FunctionorArraysAccess
+from node_classes import Call, StringVal, Variable, FunctionorArraysAccess
 
 
 class EnvVar:
@@ -434,10 +434,15 @@ class CodeGenerator:
             else:
                 self.instructions.append("PUSHI -1")
                 self.instructions.append("MUL")
-        elif op in (".NOT.", "NOT"):
+        elif op in (".NOT."):
             self.instructions.append("PUSHI 1")
             self.instructions.append("SWAP")
             self.instructions.append("SUB")
+
+    def generate_Mod(self, node):
+        self.generate(node.left)
+        self.generate(node.right)
+        self.instructions.append(f"MOD") 
 
     def generate_Function(self, node: Any) -> None:
         func_name = node.name.name if hasattr(node.name, "name") else node.name
@@ -480,6 +485,52 @@ class CodeGenerator:
             self.instructions.append(f"PUSHN {num_locals}")
 
         self.generate(node.labeled_statements)
+        self.instructions.append("RETURN")
+
+        # Restaurar scope
+        self.locals = old_locals
+        self.fp_offset = old_fp_offset
+    
+    def generate_Subroutine(self, node: Any) -> None:
+        sub_name = node.name.name if hasattr(node.name, "name") else node.name
+        self.instructions.append(f"{sub_name}:")
+
+        # Salvar scope anterior
+        old_locals = self.locals
+        old_fp_offset = self.fp_offset
+        self.locals = {}
+
+        symbols = self.semantic_info.unit_symbols.get(sub_name, {})
+        n_args = len(node.arguments)
+
+        # 1. Mapear Argumentos (todos por referência)
+        for i, arg in enumerate(node.arguments):
+            offset = -n_args + i
+            arg_name = arg.name if hasattr(arg, "name") else arg
+            info = symbols.get(arg_name, {})
+            var = EnvVar(arg_name, "LOCAL", offset, info.get("type"), is_ref=True)
+            self.locals[arg_name] = var
+
+        self.fp_offset = 1
+
+        # 2. Mapear Variáveis Locais (apenas variáveis locais, não argumentos nem funções/subrotinas)
+        for name, info in symbols.items():
+            if name not in self.locals and not info.get("is_function") and not info.get("is_subroutine"):
+                var_type = info.get("type")
+                is_array = info.get("is_array")
+                base_size = 2 if var_type == "COMPLEX" else 1
+                size = (info.get("array_size", 1) if is_array else 1) * base_size
+                self.add_local(name, var_type, False, size)
+
+        # Alocar espaço para as variáveis locais (se houver)
+        num_locals = self.fp_offset - 1
+        if num_locals > 0:
+            self.instructions.append(f"PUSHN {num_locals}")
+
+        # 3. Gerar código da subrotina
+        self.generate(node.labeled_statements)
+        
+        # 4. Retornar sem valor
         self.instructions.append("RETURN")
 
         # Restaurar scope
@@ -545,5 +596,32 @@ class CodeGenerator:
         else:
             print(f"DEBUG: {name} is neither marked as array nor function!")
 
+    def generate_Call(self, node: Call) -> None:
+        name = node.subroutine.name if hasattr(node.subroutine, "name") else node.subroutine
+
+        # 1. Empilhar argumentos por referência
+        for arg in node.arguments:
+            if isinstance(arg, Variable):
+                arg_var = self.lookup(arg.name)
+                if arg_var:
+                    if arg_var.scope == "GLOBAL":
+                        self.instructions.append("PUSHGP")
+                    else:
+                        self.instructions.append("PUSHFP")
+                    self.instructions.append(f"PUSHI {arg_var.offset}")
+                    self.instructions.append("PADD")
+                else:
+                    self.generate(arg)
+            else:
+                self.generate(arg)
+
+        # 2. Chamar a subrotina
+        self.instructions.append(f"PUSHA {name}")
+        self.instructions.append("CALL")
+
+        # 3. Limpar argumentos da pilha
+        if node.arguments:
+            self.instructions.append(f"POP {len(node.arguments)}")
+        
     def get_assembly(self) -> str:
         return "\n".join(self.instructions)

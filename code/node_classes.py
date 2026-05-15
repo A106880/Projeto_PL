@@ -444,7 +444,7 @@ class Mod(Statement):
 
 
 class Call(Statement):
-    subroutine: Any
+    subroutine: Subroutine
     arguments: List[Expression]
 
     def __init__(self, subroutine,arguments):

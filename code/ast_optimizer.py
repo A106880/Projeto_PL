@@ -279,9 +279,9 @@ class ASTOptimizer:
                         if self.semantic_info is not None:
                             original_right = node.right
                             already_literal_zero = isinstance(original_right, (IntVal, RealVal)) and original_right.value == 0
-                            if not already_literal_zero:
+                            if already_literal_zero:
                                 lineno = getattr(node, 'lineno', None)
-                                self.semantic_info.errors.add_error("Division by zero detected after constant folding", lineno)
+                                self.semantic_info.errors.add_error("Division by zero detected", lineno)
                         return node
                     if type(node.left) is IntVal and type(node.right) is IntVal:
                         res = v1 // v2
@@ -294,9 +294,9 @@ class ASTOptimizer:
                             original_right = node.right
                             already_literal = (isinstance(original_left, (IntVal, RealVal)) and original_left.value == 0) and \
                                               (isinstance(original_right, (IntVal, RealVal)) and original_right.value < 0)
-                            if not already_literal:
+                            if already_literal:
                                 lineno = getattr(node, 'lineno', None)
-                                self.semantic_info.errors.add_error("Zero raised to a negative power detected after constant folding", lineno)
+                                self.semantic_info.errors.add_error("Zero raised to a negative power", lineno)
                         return node
                     res = v1 ** v2
                 
@@ -314,7 +314,7 @@ class ASTOptimizer:
             except ZeroDivisionError:
                 if self.semantic_info is not None:
                     lineno = getattr(node, 'lineno', None)
-                    self.semantic_info.errors.add_error("Division by zero detected after constant folding", lineno)
+                    self.semantic_info.errors.add_error("Division by zero detected", lineno)
             except (OverflowError, ValueError) as e:
                 if self.semantic_info is not None:
                     lineno = getattr(node, 'lineno', None)
@@ -347,6 +347,37 @@ class ASTOptimizer:
                         new_node.expr_type = node.expr_type
                     new_node.lineno = node.lineno
                     return new_node
+            except Exception:
+                pass
+        return node
+
+    def optimize_Mod(self, node: BinOp) -> Union[BinOp, IntVal]:
+        node.left = self.optimize_node(node.left)
+        node.right = self.optimize_node(node.right)
+
+        if isinstance(node.left, IntVal) and isinstance(node.right, IntVal):
+            v1 = node.left.value
+            v2 = node.right.value
+            try:
+                if v2 == 0:
+                    if self.semantic_info is not None:
+                        original_right = node.right
+                        already_literal_zero = isinstance(original_right, IntVal) and original_right.value == 0
+                        if already_literal_zero:
+                            lineno = getattr(node, 'lineno', None)
+                            self.semantic_info.errors.add_error("Modulo by zero detected", lineno)
+                    return node
+                res = v1 % v2
+                self.optimized_nodes += 1
+                new_node = IntVal(int(res))
+                if hasattr(node, 'expr_type'):
+                    new_node.expr_type = node.expr_type
+                new_node.lineno = node.lineno
+                return new_node
+            except ZeroDivisionError:
+                if self.semantic_info is not None:
+                    lineno = getattr(node, 'lineno', None)
+                    self.semantic_info.errors.add_error("Modulo by zero detected", lineno)
             except Exception:
                 pass
         return node

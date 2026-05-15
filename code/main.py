@@ -41,15 +41,8 @@ if __name__ == "__main__":
     ast = parser.parse(codigo_fortran,tracking=True)
 
     if ast:
-        print("Success! Here is the generated AST:")
-        print(ast)
-        
-        
-        
-        # parser.symbols = SymbolTable()
-        # res = verify_program(ast)
-        # #print(res)
-        # print("\n\n\n")
+        # print("Success! Here is the generated AST:")
+        # print(ast)
 
         print("\n--- Semantic Analysis ---\n")
         semantic_parser = SemanticParser()
@@ -65,7 +58,7 @@ if __name__ == "__main__":
             for w in optimizer.warnings:
                 print(f"    {w}")
         print("\nOptimized AST:")
-        print(ast)
+        # print(ast)
 
         print("\n--- Error Report ---\n")
         print(semantic_parser.errors.report())
@@ -77,7 +70,7 @@ if __name__ == "__main__":
             generator.generate_Program_Unit(ast)
             assembly_code = generator.get_assembly()
             
-            with open("assembly.vm", "w", newline='\n') as f:
+            with open("../assembly.vm", "w", newline='\n') as f:
                 f.write(assembly_code)
                 
             print("Machine code generated successfully!")

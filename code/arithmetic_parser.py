@@ -56,7 +56,7 @@ def p_newlines(p):
     pass
 
 def p_opt_newlines(p):
-    '''OptNewLines : NEWLINE OptNewLines
+    '''OptNewLines : NewLines
                    | empty'''
     pass
 

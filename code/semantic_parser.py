@@ -1,5 +1,7 @@
 from __future__ import annotations
 from typing import Any, Optional, Dict, List, Tuple, Set
+
+from sympy import arg
 from error_classes import SemanticErrorCollector
 from node_classes import (
     Node, Program_Unit, MainProgram, Function, Subroutine, Declaration,
@@ -127,6 +129,7 @@ class SemanticParser:
     _used_labels: List[Any]
     _current_unit_name: Optional[str]
     _in_function: bool
+    _in_subroutine: bool
     _in_do_loop: bool
     program_units: Dict[str, Program_Unit]
     unit_symbols: Dict[str, Dict[str, Any]]
@@ -138,6 +141,7 @@ class SemanticParser:
         self._used_labels = []
         self._current_unit_name = None
         self._in_function = False
+        self._in_subroutine = False
         self._in_do_loop = False
         self.program_units = {}
         self.unit_symbols = {} # Guarda a tabela de símbolos de cada unidade
@@ -247,10 +251,10 @@ class SemanticParser:
         self._current_unit_name = None
 
 
-    def verify_Subroutine(self, node):
+    def verify_Subroutine(self, node: Subroutine) -> None:
         subroutine_name = get_name(node.name)
         self._current_unit_name = subroutine_name
-        self._in_function = True
+        self._in_subroutine = True
         self._defined_labels.clear()
         self._used_labels.clear()
         self.symbols.push_scope()
@@ -264,13 +268,25 @@ class SemanticParser:
                 seen_args.add(name)
                 self.symbols.declare(name, None)
 
-        self.process_declarations(node.declarations, node)
+        self.process_declarations(node.declarations)
+
+        global_scope = self.symbols._scopes[0]
+        subroutine_symbol = global_scope.get(subroutine_name)
+        if subroutine_symbol:
+            subroutine_symbol["initialized"] = False
+
+        self.labels = []
         self.process_labeled_statements(node.labeled_statements)
         self.check_labels()
+
+        # Garantir que a subrotina fica marcada como inicializada para os chamadores
+        if subroutine_symbol:
+            subroutine_symbol["initialized"] = True
+
         # Salvar tabela de símbolos da unidade
         self.unit_symbols[subroutine_name] = dict(self.symbols._scopes[-1])
         self.symbols.pop_scope()
-        self._in_function = False
+        self._in_subroutine = False
         self._current_unit_name = None
 
     def check_labels(self) -> None:
@@ -489,19 +505,19 @@ class SemanticParser:
                 self.errors.add_error(f"Right operand of '{op}' must be numeric, got {right_type}", lineno)
                 return None
 
-            if op == '/':
-                if isinstance(node.right, IntVal) and node.right.value == 0:
-                    self.errors.add_error("Division by zero", lineno)
-                elif isinstance(node.right, RealVal) and node.right.value == 0.0:
-                    self.errors.add_error("Division by zero", lineno)
+            # if op == '/':
+            #     if isinstance(node.right, IntVal) and node.right.value == 0:
+            #         self.errors.add_error("Division by zero", lineno)
+            #     elif isinstance(node.right, RealVal) and node.right.value == 0.0:
+            #         self.errors.add_error("Division by zero", lineno)
 
-            if op == '**':
-                left_is_zero = (isinstance(node.left, IntVal) and node.left.value == 0) or \
-                               (isinstance(node.left, RealVal) and node.left.value == 0.0)
-                right_is_neg = (isinstance(node.right, IntVal) and node.right.value < 0) or \
-                               (isinstance(node.right, RealVal) and node.right.value < 0.0)
-                if left_is_zero and right_is_neg:
-                    self.errors.add_error("Zero raised to a negative power", lineno)
+            # if op == '**':
+            #     left_is_zero = (isinstance(node.left, IntVal) and node.left.value == 0) or \
+            #                    (isinstance(node.left, RealVal) and node.left.value == 0.0)
+            #     right_is_neg = (isinstance(node.right, IntVal) and node.right.value < 0) or \
+            #                    (isinstance(node.right, RealVal) and node.right.value < 0.0)
+            #     if left_is_zero and right_is_neg:
+            #         self.errors.add_error("Zero raised to a negative power", lineno)
 
             if left_type == right_type:
                 return left_type
