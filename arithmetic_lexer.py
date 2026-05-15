@@ -1,7 +1,11 @@
 import ply.lex as lex
 from node_classes import Variable
+import re
+
+
 class LexError(Exception):
     pass
+
 
 literals = "(),+-*/="
 tokens = (
@@ -37,14 +41,14 @@ reserved = {
     'ENDIF': 'ENDIF', 
     'GOTO': 'GOTO', 
     'CONTINUE': 'CONTINUE',
-    'SUBROUTINE' : 'SUBROUTINE',
-    'CALL' : 'CALL',
-    'RETURN' : 'RETURN'
+    'SUBROUTINE': 'SUBROUTINE',
+    'CALL': 'CALL',
+    'RETURN': 'RETURN'
 }
+
 
 def t_HOLLERITHVAL(t):
     r'\d+[Hh]\w+'
-    import re
     match = re.match(r'(\d+)[Hh](.*)', t.value)
     if match:
         n = int(match.group(1))
@@ -53,11 +57,6 @@ def t_HOLLERITHVAL(t):
     t.lineno = t.lexer.lineno
     return t
 
-def t_INTVAL(t):
-    r'\d+'
-    t.value = int(t.value)
-    t.lineno = t.lexer.lineno
-    return t
 
 def t_DOUBLEPRECISIONVAL(t):
     r'\d+\.\d*(?:[Dd][+-]?\d+)?|\.\d+(?:[Dd][+-]?\d+)?|\d+[Dd][+-]?\d+'
@@ -65,11 +64,20 @@ def t_DOUBLEPRECISIONVAL(t):
     t.lineno = t.lexer.lineno
     return t
 
+
 def t_REALVAL(t):
     r'\d+\.\d*(?:[Ee][+-]?\d+)?|\.\d+(?:[Ee][+-]?\d+)?|\d+[Ee][+-]?\d+'
     t.value = float(t.value)
     t.lineno = t.lexer.lineno
     return t
+
+
+def t_INTVAL(t):
+    r'\d+'
+    t.value = int(t.value)
+    t.lineno = t.lexer.lineno
+    return t
+
 
 def t_LOGICALVAL(t):
     r'\.(TRUE|true|FALSE|false)\.'
@@ -77,12 +85,12 @@ def t_LOGICALVAL(t):
     t.lineno = t.lexer.lineno
     return t
 
+
 def t_CHARACTERVAL(t):
-    r"'([^']|'')*'"
-    t.value = t.value[1:-1].replace("''", "'")
+    r''([^']|'')*''
+    t.value = t.value[1:-1].replace('''', ''')
     t.lineno = t.lexer.lineno
     return t
-
 
 
 def t_ID(t):
@@ -93,10 +101,20 @@ def t_ID(t):
     t.lineno = t.lexer.lineno
     return t
 
+
 t_ignore = ' \t'
 
+
+def preprocess_fortran(source):
+    lines = source.split('\n')
+    for i, line in enumerate(lines):
+        if line and line[0] in ('C', 'c', '*'):
+            lines[i] = ''
+    return '\n'.join(lines)
+
+
 def t_COMMENT(t):
-    r'(^[Cc*].*)|(!.*)'
+    r'!.*'
     pass
 
 
@@ -106,62 +124,75 @@ def t_NEWLINE(t):
     t.type = 'NEWLINE'
     return t
 
+
 def t_POWER(t):
     r'\*\*'
     t.type = reserved.get(t.value.upper(),'POWER')
     return t
+
 
 def t_CONCAT(t):
     r'//'
     t.type = reserved.get(t.value.upper(),'CONCAT')
     return t
 
+
 def t_AND(t):
     r'\.AND\.|\.and\.'
     t.type = reserved.get(t.value.upper(),'AND')
     return t
+
 
 def t_OR(t):
     r'\.or\.|\.OR\.'
     t.type = reserved.get(t.value.upper(),'OR')
     return t
 
+
 def t_NOT(t):
     r'\.NOT\.|\.not\.'
     t.type = reserved.get(t.value.upper(),'NOT')
     return t
+
 
 def t_EQ(t):
     r'\.EQ\.|\.eq\.'
     t.type = reserved.get(t.value.upper(),'EQ')
     return t
 
+
 def t_NE(t):
     r'\.NE\.|\.ne\.'
     t.type = reserved.get(t.value.upper(),'NE')
     return t
+
 
 def t_LT(t):
     r'\.LT\.|\.lt\.'
     t.type = reserved.get(t.value.upper(),'LT')
     return t
 
+
 def t_LE(t):
     r'\.LE\.|\.le\.'
     t.type = reserved.get(t.value.upper(),'LE')
     return t
+
 
 def t_GT(t):
     r'\.GT\.|\.gt\.'
     t.type = reserved.get(t.value.upper(),'GT')
     return t
 
+
 def t_GE(t):
     r'\.GE\.|\.ge\.'
     t.type = reserved.get(t.value.upper(),'GE')
     return t
 
+
 def t_error(t):
     raise LexError(f"Illegal character {t.value[0]}")
+
 
 lexer = lex.lex()
