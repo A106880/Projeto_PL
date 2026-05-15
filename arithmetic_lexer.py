@@ -1,55 +1,54 @@
 import ply.lex as lex
 from node_classes import Variable
+import re
 
 
 class LexError(Exception):
     pass
 
 
-literals = '(),+-*/='
+literals = "(),+-*/="
 tokens = (
-    'NEWLINE', 'PROGRAM', 'ID', 'END', 'FUNCTION', 'INTEGER', 'INTVAL',
-    'REAL', 'REALVAL', 'DOUBLEPRECISION', 'DOUBLEPRECISIONVAL','COMPLEX',
-    'DOUBLECOMPLEX', 'LOGICAL', 'LOGICALVAL',
-    'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ',
+    'NEWLINE', 'PROGRAM', 'ID', 'END', 'FUNCTION', 'INTEGER', 'INTVAL', 
+    'REAL', 'REALVAL', 'DOUBLEPRECISION', 'DOUBLEPRECISIONVAL', 'COMPLEX', 
+    'DOUBLECOMPLEX', 'LOGICAL', 'LOGICALVAL', 
+    'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ', 
     'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 'SUBROUTINE', 'CALL',
     'POWER', 'CONCAT', 'AND', 'OR', 'NOT', 'EQ', 'NE', 'LT', 'LE', 'GT', 'GE',
     'RETURN'
 )
 
 reserved = {
-    'PROGRAM': 'PROGRAM',
-    'END': 'END',
-    'FUNCTION': 'FUNCTION',
-    'INTEGER': 'INTEGER',
-    'REAL': 'REAL',
+    'PROGRAM': 'PROGRAM', 
+    'END': 'END', 
+    'FUNCTION': 'FUNCTION', 
+    'INTEGER': 'INTEGER', 
+    'REAL': 'REAL', 
     'DOUBLEPRECISION': 'DOUBLEPRECISION',
-    'COMPLEX': 'COMPLEX',
-    'DOUBLECOMPLEX': 'DOUBLECOMPLEX',
-    'LOGICAL': 'LOGICAL',
-    'CHARACTER': 'CHARACTER',
-    'HOLLERITH': 'HOLLERITH',
-    'PRINT': 'PRINT',
-    'READ': 'READ',
-    'WRITE': 'WRITE',
-    'DO': 'DO',
-    'MOD': 'MOD',
-    'IF': 'IF',
-    'THEN': 'THEN',
-    'ELSE': 'ELSE',
-    'ENDIF': 'ENDIF',
-    'GOTO': 'GOTO',
+    'COMPLEX': 'COMPLEX', 
+    'DOUBLECOMPLEX': 'DOUBLECOMPLEX', 
+    'LOGICAL': 'LOGICAL', 
+    'CHARACTER': 'CHARACTER', 
+    'HOLLERITH': 'HOLLERITH', 
+    'PRINT': 'PRINT', 
+    'READ': 'READ', 
+    'WRITE': 'WRITE', 
+    'DO': 'DO', 
+    'MOD': 'MOD', 
+    'IF': 'IF', 
+    'THEN': 'THEN', 
+    'ELSE': 'ELSE', 
+    'ENDIF': 'ENDIF', 
+    'GOTO': 'GOTO', 
     'CONTINUE': 'CONTINUE',
     'SUBROUTINE': 'SUBROUTINE',
     'CALL': 'CALL',
-    'RETURN': 'RETURN',
+    'RETURN': 'RETURN'
 }
 
 
 def t_HOLLERITHVAL(t):
     r'\d+[Hh]\w+'
-    import re
-
     match = re.match(r'(\d+)[Hh](.*)', t.value)
     if match:
         n = int(match.group(1))
@@ -128,72 +127,72 @@ def t_NEWLINE(t):
 
 def t_POWER(t):
     r'\*\*'
-    t.type = reserved.get(t.value.upper(), 'POWER')
+    t.type = reserved.get(t.value.upper(),'POWER')
     return t
 
 
 def t_CONCAT(t):
     r'//'
-    t.type = reserved.get(t.value.upper(), 'CONCAT')
+    t.type = reserved.get(t.value.upper(),'CONCAT')
     return t
 
 
 def t_AND(t):
     r'\.AND\.|\.and\.'
-    t.type = reserved.get(t.value.upper(), 'AND')
+    t.type = reserved.get(t.value.upper(),'AND')
     return t
 
 
 def t_OR(t):
     r'\.or\.|\.OR\.'
-    t.type = reserved.get(t.value.upper(), 'OR')
+    t.type = reserved.get(t.value.upper(),'OR')
     return t
 
 
 def t_NOT(t):
     r'\.NOT\.|\.not\.'
-    t.type = reserved.get(t.value.upper(), 'NOT')
+    t.type = reserved.get(t.value.upper(),'NOT')
     return t
 
 
 def t_EQ(t):
     r'\.EQ\.|\.eq\.'
-    t.type = reserved.get(t.value.upper(), 'EQ')
+    t.type = reserved.get(t.value.upper(),'EQ')
     return t
 
 
 def t_NE(t):
     r'\.NE\.|\.ne\.'
-    t.type = reserved.get(t.value.upper(), 'NE')
+    t.type = reserved.get(t.value.upper(),'NE')
     return t
 
 
 def t_LT(t):
     r'\.LT\.|\.lt\.'
-    t.type = reserved.get(t.value.upper(), 'LT')
+    t.type = reserved.get(t.value.upper(),'LT')
     return t
 
 
 def t_LE(t):
     r'\.LE\.|\.le\.'
-    t.type = reserved.get(t.value.upper(), 'LE')
+    t.type = reserved.get(t.value.upper(),'LE')
     return t
 
 
 def t_GT(t):
     r'\.GT\.|\.gt\.'
-    t.type = reserved.get(t.value.upper(), 'GT')
+    t.type = reserved.get(t.value.upper(),'GT')
     return t
 
 
 def t_GE(t):
     r'\.GE\.|\.ge\.'
-    t.type = reserved.get(t.value.upper(), 'GE')
+    t.type = reserved.get(t.value.upper(),'GE')
     return t
 
 
 def t_error(t):
-    raise LexError(f'Illegal character {t.value[0]}')
+    raise LexError(f"Illegal character {t.value[0]}")
 
 
 lexer = lex.lex()
