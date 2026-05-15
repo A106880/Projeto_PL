@@ -210,7 +210,6 @@ __marimo__/
 #Ficheiros do parser
 parser.out
 parsetab.py
+assembly.vm
 
-exemplo*
-
-testes/
+# testes/

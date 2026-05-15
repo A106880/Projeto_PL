@@ -1,4 +1,5 @@
 from arithmetic_parser import parser
+from arithmetic_lexer import preprocess_fortran
 from semantic_parser import SemanticParser
 from ast_optimizer import ASTOptimizer
 from code_generator import CodeGenerator
@@ -32,51 +33,53 @@ if __name__ == "__main__":
         codigo_fortran = file.read()
 
     print(
-        f"A iniciar a análise sintática do código Fortran de {filename}\n"
+        f"Starting syntactic analysis of Fortran code from {filename}\n"
     )
+
+    codigo_fortran = preprocess_fortran(codigo_fortran)
 
     ast = parser.parse(codigo_fortran,tracking=True)
 
     if ast:
-        print("Sucesso! Aqui está a AST gerada:")
-        print(ast)
-        
-        
-        
-        # parser.symbols = SymbolTable()
-        # res = verify_program(ast)
-        # #print(res)
-        # print("\n\n\n")
+        # print("Success! Here is the generated AST:")
+        # print(ast)
 
-        print("\n--- Análise Semântica ---\n")
+        print("\n--- Semantic Analysis ---\n")
         semantic_parser = SemanticParser()
         semantic_parser.verify_program(ast)
-        print(semantic_parser.errors.report())
         
-        if len(semantic_parser.errors.errors) == 0:
-            print("\n--- Otimização de AST ---\n")
-            optimizer = ASTOptimizer()
-            ast = optimizer.optimize_program(ast)
-            print(f"Otimização concluída! {optimizer.optimized_nodes} nós modificados.")
-            print("\nAST Otimizada:")
-            print(ast)
-            
-            print("\n--- Geração de Código ---\n")
+        print("\n--- AST Optimization ---\n")
+        optimizer = ASTOptimizer()
+        optimizer.set_semantic_info(semantic_parser)
+        ast = optimizer.optimize_program(ast)
+        print(f"Optimization completed! {optimizer.optimized_nodes} node(s) modified.")
+        if optimizer.warnings:
+            print(f"\n  Warnings ({len(optimizer.warnings)}):")
+            for w in optimizer.warnings:
+                print(f"    {w}")
+        print("\nOptimized AST:")
+        # print(ast)
+
+        print("\n--- Error Report ---\n")
+        print(semantic_parser.errors.report())
+
+        if not semantic_parser.errors.has_errors():
+            print("\n--- Code Generation ---\n")
             generator = CodeGenerator()
             generator.set_semantic_info(semantic_parser)
             generator.generate_Program_Unit(ast)
             assembly_code = generator.get_assembly()
             
-            with open("assembly.vm", "w") as f:
+            with open("../assembly.vm", "w", newline='\n') as f:
                 f.write(assembly_code)
                 
-            print("Código máquina gerado com sucesso'!")
+            print("Machine code generated successfully!")
             print(assembly_code)
         else:
-            print("\nOtimização e Geração de Código ignoradas devido a erros semânticos.")
+            print("\nCode Generation skipped due to errors.")
         print("\n")
     else:
-        print("O parsing falhou e devolveu None. Verifica os erros acima.")
+        print("Parsing failed and returned None. Check the errors above.")
 
 
 
