@@ -354,12 +354,18 @@ def p_label_seq(p):
 
 def p_labeledDo(p):
     '''Do : DO Label ID '=' Expression ',' Expression Step'''
-    p[0] = LabeledDO(p[2], p[3], p[5], p[7], step=p[8]if p[8] is not None else 1)
+    if p[8] is not None:
+        p[0] = LabeledDO(p[2], p[3], p[5], p[7], step=p[8])
+    else:
+        p[0] = LabeledDO(p[2], p[3], p[5], p[7])
     p[0].lineno = p.lineno(1)
 
 def p_block_do(p):
     '''Do : DO ID '=' Expression ',' Expression Step NewLines LabeledStatements END DO'''
-    p[0] = BlockDO(p[2], p[4], p[6], p[9], step = p[7]if p[7] is not None else 1)
+    if p[7] is not None:
+        p[0] = BlockDO(p[2], p[4], p[6], p[9], step = p[7])
+    else:
+        p[0] = BlockDO(p[2], p[4], p[6], p[9])
     p[0].lineno = p.lineno(1)
 
 def p_step(p):
@@ -396,8 +402,8 @@ def p_else_block(p):
                  | empty'''
     if len(p) > 2:
         p[0] = p[2]
-        if p[0] is not None:
-            p[0].lineno = p.lineno(1)
+        #if p[0] is not None:
+         #   p[0].lineno = p.lineno(1)
     else:
         p[0] = None
 

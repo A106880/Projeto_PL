@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, Optional, Dict, List, Tuple, Set
 
-from sympy import arg
+#from sympy import arg
 from error_classes import SemanticErrorCollector
 from node_classes import (
     Node, Program_Unit, MainProgram, Function, Subroutine, Declaration,
@@ -197,6 +197,7 @@ class SemanticParser:
         self.process_declarations(node.declarations)
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
+        self.collect_labeled_do_bodies(node.labeled_statements)
         self.check_labels()
         # Salvar tabela de símbolos da unidade
         unit_name = get_name(node.name) if node.name else "MAIN"
@@ -226,13 +227,14 @@ class SemanticParser:
         self.process_declarations(node.declarations)
 
         # Verificar atribuição de retorno
-        global_scope = self.symbols._scopes[0]
-        func_symbol = global_scope.get(func_name)
+        local_scope = self.symbols._scopes[-1]
+        func_symbol = local_scope.get(func_name)
         if func_symbol:
             func_symbol["initialized"] = False
 
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
+        self.collect_labeled_do_bodies(node.labeled_statements)
         self.check_labels()
 
         # Verificar se houve atribuição ao nome da função
@@ -477,9 +479,9 @@ class SemanticParser:
 
     _arithmetic_ops: Set[str] = {'+', '-', '*', '/', '**'}
 
-    _comparison_ops: Set[str] = {'EQ', 'NE', 'LT', 'LE', 'GT', 'GE'}
+    _comparison_ops: Set[str] = {'.EQ.', '.NE.', '.LT.', '.LE.', '.GT.', '.GE.'}
 
-    _logical_ops: Set[str] = {'AND', 'OR'}
+    _logical_ops: Set[str] = {'.AND.', '.OR.'}
 
     _numeric_types: Set[str] = {'INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX'}
 
@@ -488,7 +490,6 @@ class SemanticParser:
         left_type = self.verify_expression(node.left, lineno)
         right_type = self.verify_expression(node.right, lineno)
         op = node.op
-
 
         if left_type is None:
             self.errors.add_error(f"Left operand of '{op}' must doesn't have a type", lineno)
@@ -607,7 +608,7 @@ class SemanticParser:
             
             return None
             
-        current_lineno = expr.lineno if expr.lineno is not None else lineno
+        current_lineno = getattr(expr, 'lineno', lineno)
             
         def _get_type() -> Optional[str]:
             if isinstance(expr, LogicalVal):
@@ -683,31 +684,159 @@ class SemanticParser:
         
     def verify_Statement(self, node: Statement) -> None:
         if isinstance(node, Goto):
-            self._used_labels.append(get_name(node.label))
+            self.verify_Goto(node)
         elif isinstance(node, AssignedGoto):
-            if node.labels:
-                for label_node in node.labels:
-                    self._used_labels.append(get_name(label_node))
+            self.verify_AssignedGoto(node)
         elif isinstance(node, ComputedGoto):
-            for label_node in node.labels:
-                self._used_labels.append(get_name(label_node))
+            self.verify_ComputedGoto(node)
         elif isinstance(node, ArithmeticIf):
-            self._used_labels.append(get_name(node.labeln))
-            self._used_labels.append(get_name(node.labelz))
-            self._used_labels.append(get_name(node.labelp))
+            self.verify_ArithmeticIf(node)
         elif isinstance(node, LogicIf):
-            print("WARNING: Semantic verification for LogicIf not yet implemented.")
-            pass
+            self.verify_LogicIf(node)
         elif isinstance(node, BlockIf):
-            print("WARNING: Semantic verification for BlockIf not yet implemented.")
-            pass
+            self.verify_BlockIf(node)
         elif isinstance(node, LabeledDO):
-            if node.label:
-                self._used_labels.append(get_name(node.label))
+            self.verify_LabeledDO(node)
         elif isinstance(node, BlockDO):
-            print("WARNING: Semantic verification for BlockDO not yet implemented.")
-            pass
+            self.verify_BlockDO(node)
+        if getattr(node, 'statement', None):
+            self.verify(node.statement)   
+    
+    def verify_Goto(self, node:Goto):
+        self._used_labels.append(node.label)
+
+    def verify_ComputedGoto(self, node:ComputedGoto):
+        for label in node.labels:
+            self._used_labels.append(label)
+        expr_type = self.verify_expression(node.expr, node.lineno)
+        if expr_type != "INTEGER" or expr_type!= "REAL":
+            self.errors.add_error(f"Computed GOTO index (expression) must be INTEGER/REAL, got {expr_type}", node.lineno)
+
+    def verify_AssignedGoto(self, node:AssignedGoto):
+        var_name = node.var.name
+        var_info = self.symbols.lookup(var_name)
+        if not var_info:
+            self.errors.add_error(f"Assigned GOTO variable '{var_name}' is not declared", getattr(node, 'leneno', None))
+        elif var_info.get("type") != "INTEGER":
+            self.errors.add_error(f"Assigned GOTO variable '{var_name}' must be of type INTEGER, got {var_info.get('type')}",getattr(node, 'lineno', None))
         
-        stmt = getattr(node, "statement", None)
-        if stmt is not None:
+        if node.labels:
+            for label in node.labels:
+                self._used_labels.append(label)
+    
+
+    def collect_labeled_do_bodies(self, labeled_statements):
+        i = 0
+        n = len(labeled_statements)
+        result = []
+        while i < n:
+            stmt = labeled_statements[i]
+            if isinstance(stmt.statement, LabeledDO) and stmt.statement.labeled_statements is None:
+                loop = stmt.statement
+                loop_body = []
+                i += 1
+                while i < n:
+                    next_stmt = labeled_statements[i]
+                    if (next_stmt.label is not None
+                        and next_stmt.label.value == loop.label.value):
+                        break
+                    loop_body.append(next_stmt)
+                    i += 1
+                loop.labeled_statements = loop_body
+                result.append(stmt)
+                if i < n:
+                    result.append(labeled_statements[i])
+                i += 1
+            else:
+                result.append(stmt)
+                i += 1
+        return result
+
+    def verify_LabeledDO(self, node):
+        allowed_numeric_types = {"INTEGER", "REAL", "DOUBLEPRECISION"}
+        lineno = getattr(node, "lineno", None)
+        var_name = node.control_var.name
+        var_info = self.symbols.lookup(var_name)
+        if not var_info:
+            self.errors.add_error(f"Labeled DO loop control variable '{var_name}' is not declared.", lineno)
+        elif var_info.get("type") not in allowed_numeric_types:
+            self.errors.add_error(f"Labeled DO loop control variable '{var_name}' must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {var_info.get('type')}.", lineno)
+        
+        init_type = self.verify_expression(node.control_var_init_value, lineno)
+        if init_type not in allowed_numeric_types:
+            self.errors.add_error(f"Labeled DO loop initial value must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {init_type}.", lineno)
+        
+        final_type = self.verify_expression(node.iterations_number, lineno)
+        if final_type not in allowed_numeric_types:
+            self.errors.add_error(f"Labeled DO loop final value must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {final_type}.", lineno)
+        
+        if getattr(node, 'step', None) is not None:
+            step_type = self.verify_expression(node.step, lineno)
+            if step_type not in allowed_numeric_types:
+                self.errors.add_error(f"Labeled DO loop step value must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {step_type}.", lineno)
+        
+        if node.label is not None:
+            self._used_labels.append(node.label)
+    
+    def verify_BlockDO(self, node:BlockDO):
+        allowed_numeric_types = {"INTEGER", "REAL", "DOUBLEPRECISION"}
+        lineno = getattr(node, "lineno", None)
+        var_name = node.control_var.name
+        var_info = self.symbols.lookup(var_name)
+        if not var_info:
+            self.errors.add_error(f"Block DO loop control variable '{var_name}' is not declared.", lineno)
+        elif var_info.get("type") not in allowed_numeric_types:
+            self.errors.add_error(f"Block DO loop control variable '{var_name}' must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {var_info.get('type')}.", lineno)
+
+        init_type = self.verify_expression(node.init_value, lineno)
+        if init_type not in allowed_numeric_types:
+            self.errors.add_error(f"Block DO loop initial value must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {init_type}.", lineno)
+
+        final_type = self.verify_expression(node.max_value, lineno)
+        if final_type not in allowed_numeric_types:
+            self.errors.add_error(f"Block DO loop final value must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {final_type}.", lineno)
+
+        if getattr(node, "step", None) is not None:
+            step_type = self.verify_expression(node.step, lineno)
+            if step_type not in allowed_numeric_types:
+                self.errors.add_error(f"Block DO loop step value must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {step_type}.", lineno)
+
+        if getattr(node, "labeled_statements", None):
+            for labeled_stmt in node.labeled_statements:
+                self.verify(labeled_stmt)
+
+    def verify_ArithmeticIf(self, node:ArithmeticIf):
+        allowed_types = {"INTEGER", "REAL", "DOUBLEPRECISION"}
+        lineno = getattr(node, "lineno", None)
+        expr_type = self.verify_expression(node.exp, lineno)
+
+        if expr_type not in allowed_types:
+            self.errors.add_error(f"Arithmetic IF condition must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {expr_type}.", lineno)
+            
+        self._used_labels.append(node.labeln)
+        self._used_labels.append(node.labelz)
+        self._used_labels.append(node.labelp)
+
+    def verify_LogicIf(self, node:LogicIf):
+        cond_type = self.verify_expression(node.exp, node.lineno)
+        if cond_type != "LOGICAL":
+            self.errors.add_error(f"Logical IF condition must be LOGICAL, got {cond_type}", node.lineno)
+        self.verify(node.statement)
+
+    def verify_BlockIf(self, node:BlockIf):
+        cond_type = self.verify_expression(node.exp, node.lineno)
+        if cond_type != "LOGICAL":
+            self.errors.add_error(f"Block IF condition must be LOGICAL, got {cond_type}", node.lineno)
+
+        for stmt in node.thenBody:
             self.verify(stmt)
+
+        if node.elseBody:#!=None
+            if isinstance(node.elseBody, list):#==[LabeledStatement]
+                for stmt in node.elseBody:
+                    self.verify(stmt)
+            else:#==outro BlockIf
+                self.verify(node.elseBody)
+
+
+
