@@ -87,8 +87,8 @@ def t_LOGICALVAL(t):
 
 
 def t_CHARACTERVAL(t):
-    r''([^']|'')*''
-    t.value = t.value[1:-1].replace('''', ''')
+    r"'([^']|'')*'"
+    t.value = t.value[1:-1].replace("''", "'")
     t.lineno = t.lexer.lineno
     return t
 
