@@ -434,43 +434,6 @@ class Read(Statement):
         space = '  '*indent
         return f"Read(Format: {self.format}, Items: {self.iolist})"
 
-class LabeledDO(Statement):
-    def __init__(self, label:Label, control_var:str, control_var_init_value, iterations_number, labeled_statements = None, step = 1):
-        super().__init__()
-        self.label = label
-        self.control_var = control_var
-        self.control_var_init_value = control_var_init_value
-        self.iterations_number = iterations_number
-        self.labeled_statements = labeled_statements #temporariamente a none
-        self.step = step
-
-    def __repr__(self):
-        return self.repr(0)
-
-    def repr(self, indent = 0):
-        space = '  '*indent
-        return (f"DO {self.label} (INIT = {self.control_var} = {self.control_var_init_value}, LIMIT = {self.iterations_number}, STEP = {self.step})"
-                # f"  LabeledStatements: {self.labeled_statements}\n"
-                # f"{self.label} END DO"
-                )
-
-class BlockDO(Statement):
-    def __init__(self, control_var:str, init_value, max_value, labeled_statements:list[LabeledStatement], step = 1):
-        super().__init__()
-        self .control_var = control_var
-        self.init_value = init_value
-        self.max_value = max_value
-        self.labeled_statements = labeled_statements
-        self.step = step
-    
-    def __repr__(self):
-        return self.repr(0)
-
-    def repr(self, indent = 0):
-        space = '  '*indent
-        return (f"DO (INIT = {self.control_var} = {self.init_value}, LIMIT = {self.max_value}, STEP = {self.step}){{\n"
-                f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
-                f"{space}}}END DO")
 
 
 
@@ -532,3 +495,48 @@ class LogicalVal(Node):
     def __repr__(self): return self.repr(0)
     def repr(self, indent=0):
         return f"{'  '*indent}LogicalVal({self.value})"
+    
+
+
+
+
+
+
+
+class LabeledDO(Statement):
+    def __init__(self, label:Label, control_var:str, control_var_init_value, iterations_number, labeled_statements = None, step = IntVal(1)):
+        super().__init__()
+        self.label = label
+        self.control_var = control_var
+        self.control_var_init_value = control_var_init_value
+        self.iterations_number = iterations_number
+        self.labeled_statements = labeled_statements #temporariamente a none
+        self.step = step
+
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return (f"DO {self.label} (INIT = {self.control_var} = {self.control_var_init_value}, LIMIT = {self.iterations_number}, STEP = {self.step})"
+                # f"  LabeledStatements: {self.labeled_statements}\n"
+                # f"{self.label} END DO"
+                )
+
+class BlockDO(Statement):
+    def __init__(self, control_var:str, init_value, max_value, labeled_statements:list[LabeledStatement], step = IntVal(1)):
+        super().__init__()
+        self .control_var = control_var
+        self.init_value = init_value
+        self.max_value = max_value
+        self.labeled_statements = labeled_statements
+        self.step = step
+    
+    def __repr__(self):
+        return self.repr(0)
+
+    def repr(self, indent = 0):
+        space = '  '*indent
+        return (f"DO (INIT = {self.control_var} = {self.init_value}, LIMIT = {self.max_value}, STEP = {self.step}){{\n"
+                f"{print_indented_list('LabeledStatements', self.labeled_statements, indent+1)}\n"
+                f"{space}}}END DO")

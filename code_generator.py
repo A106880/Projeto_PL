@@ -285,5 +285,183 @@ class CodeGenerator:
         else:
             print(f"DEBUG: {name} is neither marked as array nor function!")
 
+
+    def emit(self, line):
+        self.instructions.append(line)
+
+    def emit_label(self, label):
+        self.instructions.append(f"{label}:")
+
+    def new_label(self, prefix='LABEL'):
+        name = f"{prefix.upper()}{getattr(self, 'label_counter', 0)}"
+        self.label_counter = getattr(self, 'label_counter', 0) + 1
+        return name
+
+    def get_var_name(self, variable):
+        if hasattr(variable, 'name'):
+            return variable.name
+        return str(variable)
+
+    def generate_expression(self, expr):
+        if isinstance(expr, int):
+            return str(expr)
+        if hasattr(expr, 'name'):
+            return expr.name
+        if hasattr(expr, 'value'):
+            return str(expr.value)
+        self.generate(expr)
+        return "" 
+
+    def generate_Goto(self, node):
+        label = f"label_{node.label.value}"
+        self.emit(f"JUMP {label}")
+
+    def generate_ComputedGoto(self, node):
+        index = self.generate_expression(node.expr)
+        num_labels = len(node.labels)
+        for idx, label in enumerate(node.labels, 1):
+            self.emit("DUP 0")
+            self.emit(f"PUSHI {idx}")
+            self.emit("EQUAL")
+            next_label = self.new_label("after_case")
+            self.emit(f"JZ {next_label}")
+            self.emit(f"JUMP label{label.value}")
+            self.emit_label(next_label)
+        self.emit("POP 1")
+
+    def generate_AssignedGoto(self, node):
+        var = self.get_var_name(node.var)
+        self.generate_expression(node.var)
+        for label in node.labels:
+            self.emit("DUP 0")
+            self.emit(f"PUSHI {label.value}")
+            self.emit("EQUAL")
+            next_label = self.new_label("after_case")
+            self.emit(f"JZ {next_label}")
+            self.emit(f"JUMP label{label.value}")
+            self.emit_label(next_label)
+        self.emit("POP 1")
+
+
+    def generate_BlockDO(self, node):
+        var = self.get_var_name(node.control_var)
+        loop_label = self.new_label('doStart')
+        end_label = self.new_label('doEnd')
+        self.generate(node.init_value)
+        var_obj = self.lookup(var)
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"STOREG {var_obj.offset}")
+        else:
+            self.emit(f"STOREL {var_obj.offset}")
+
+        self.emit_label(loop_label)
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"PUSHG {var_obj.offset}")
+        else:
+            self.emit(f"PUSHL {var_obj.offset}")
+        self.generate(node.max_value)
+        self.emit("INFEQ")
+        self.emit(f"JZ {end_label}")
+
+        for stmt in node.labeled_statements:
+            self.generate(stmt)
+
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"PUSHG {var_obj.offset}")
+        else:
+            self.emit(f"PUSHL {var_obj.offset}")
+        self.generate(node.step)
+        self.emit("ADD")
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"STOREG {var_obj.offset}")
+        else:
+            self.emit(f"STOREL {var_obj.offset}")
+
+        self.emit(f"JUMP {loop_label}")
+        self.emit_label(end_label)
+
+    def generate_LabeledDO(self, node):
+        var = self.get_var_name(node.control_var)
+        var_obj = self.lookup(var)
+        loop_start = self.new_label("loopStart")
+        loop_end = self.new_label("loopEnd")
+        user_label = f"label{node.label.value}"
+
+        self.generate(node.control_var_init_value)
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"STOREG {var_obj.offset}")
+        else:
+            self.emit(f"STOREL {var_obj.offset}")
+
+        self.emit_label(loop_start)
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"PUSHG {var_obj.offset}")
+        else:
+            self.emit(f"PUSHL {var_obj.offset}")
+        self.generate(node.iterations_number)
+        self.emit("INFEQ")
+        self.emit(f"JZ {loop_end}")
+
+        for stmt in node.labeled_statements:
+            self.generate(stmt)
+
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"PUSHG {var_obj.offset}")
+        else:
+            self.emit(f"PUSHL {var_obj.offset}")
+        self.generate(node.step)
+        self.emit("ADD")
+        if var_obj.scope == "GLOBAL":
+            self.emit(f"STOREG {var_obj.offset}")
+        else:
+            self.emit(f"STOREL {var_obj.offset}")
+
+        self.emit(f"JUMP {loop_start}")
+        self.emit_label(loop_end)
+        self.emit(f"JUMP {user_label}")
+
+        self.emit_label(user_label) 
+
+    def generate_ArithmeticIf(self, node):
+        self.generate(node.exp)
+        self.emit("DUP 0")
+        self.emit("PUSHI 0")
+        self.emit("INF")
+        self.emit(f"JZ NEXT1{node.lineno}")
+        self.emit(f"JUMP label{node.labeln.value}")
+
+        self.emit_label(f"NEXT1{node.lineno}")
+        self.emit("DUP 0")
+        self.emit("PUSHI 0")
+        self.emit("EQUAL")
+        self.emit(f"JZ NEXT2{node.lineno}")
+        self.emit(f"JUMP label{node.labelz.value}")
+
+        self.emit_label(f"NEXT2{node.lineno}")
+        self.emit(f"JUMP label    {node.labelp.value}")
+
+    def generate_LogicIf(self, node):
+        endif_label = self.new_label("endif")
+        self.generate_expression(node.exp)
+        self.emit(f"JZ {endif_label}")
+        self.generate(node.statement)
+        self.emit_label(endif_label)
+
+    def generate_BlockIf(self, node):
+        else_label = self.new_label('else')
+        end_label = self.new_label('endif')
+        self.generate(node.exp)
+        self.emit(f"JZ {else_label}")
+        for stmt in node.thenBody:
+            self.generate(stmt)
+        self.emit(f"JUMP {end_label}")
+        self.emit_label(else_label)
+        if node.elseBody:
+            for stmt in node.elseBody:
+                self.generate(stmt)
+        self.emit_label(end_label)
+
+    
+
     def get_assembly(self):
         return "\n".join(self.instructions)
