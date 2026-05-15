@@ -1,6 +1,12 @@
 import ply.yacc as yacc
-from node_classes import ProgramaPrincipal, Funcao, Declaracao, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label, FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
-from arithmetic_lexer import tokens, lex
+from node_classes import (
+    MainProgram, Function, Declaration, Subroutine, BinOp, UnOp, ArrayId,
+    DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod,
+    Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO,
+    ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label,
+    FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal,
+)
+from arithmetic_lexer import tokens
 
 
 precedence = (
@@ -18,10 +24,10 @@ precedence = (
 #Program -> ProgramUnit Program |
 #               Vazio
 def p_Program(p):
-    '''Program : ProgramUnit Program
-               | empty'''
-    if len(p) > 2:
-        p[0] = [p[1]] + p[2] 
+    '''Program : OptNewLines ProgramUnit Program
+               | OptNewLines'''
+    if len(p) == 4:
+        p[0] = [p[2]] + p[3]
     else:
         p[0] = []
 
@@ -37,7 +43,7 @@ def p_ProgramUnit(p):
 def p_main(p):
     '''Main : PROGRAM ID NewLines Declarations LabeledStatements END OptNewLines'''
     
-    p[0] = ProgramaPrincipal(
+    p[0] = MainProgram(
         name=p[2],
         declarations=p[4],
         labeled_statements=p[5]
@@ -50,14 +56,14 @@ def p_newlines(p):
     pass
 
 def p_opt_newlines(p):
-    '''OptNewLines : NEWLINE OptNewLines
+    '''OptNewLines : NewLines
                    | empty'''
     pass
 
 # p2: FunctionDef -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n
 def p_functions(p):
     '''FunctionDef : FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
-    p[0] = Funcao(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
+    p[0] = Function(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
     p[0].lineno = p.lineno(1)
     
 # p4: FunctionType -> INTEGER
@@ -138,8 +144,8 @@ def p_val(p):
 def p_double_complex_val(p):
     '''DoubleComplexVal : '(' DOUBLEPRECISIONVAL ',' DOUBLEPRECISIONVAL ')'  '''
     doubleComplexValue = DoublePrecisionComplexVal(
-        p[2],
-        p[4]
+        RealVal(p[2]),
+        RealVal(p[4])
     )
     p[0] = doubleComplexValue
     p[0].lineno = p.lineno(1)
@@ -147,8 +153,8 @@ def p_double_complex_val(p):
 def p_complex_val(p):
     '''ComplexVal : '(' REALVAL ',' REALVAL ')'  '''
     complexValue = ComplexVal(
-        p[2],
-        p[4]
+        RealVal(p[2]),
+        RealVal(p[4])
     )
     p[0] = complexValue
     p[0].lineno = p.lineno(1)
@@ -192,7 +198,7 @@ def p_Declarations(p):
 #p36: Declaration -> VarType ArrayIdList\n
 def p_Declaration(p):
     '''Declaration : VarType ArrayIdList NewLines'''
-    nova_declaracao = Declaracao(p[1],p[2])
+    nova_declaracao = Declaration(p[1],p[2])
     p[0] = nova_declaracao
     p[0].lineno = p.lineno(1)
 
@@ -532,9 +538,9 @@ def p_read(p):
 
 def p_error(p):
     if p:
-        raise SyntaxError(f"Erro de sintaxe próximo a '{p.value}' na linha {p.lineno}")
+        raise SyntaxError(f"Error near '{p.value}' on line {p.lineno}")
     else:
-        raise SyntaxError("Erro de sintaxe no final do ficheiro (Inesperado End Of File)")
+        raise SyntaxError("Error on End Of File (Unexpected End Of File)")
 
 def p_empty(p):
     'empty :'
