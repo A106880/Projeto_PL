@@ -1,23 +1,28 @@
+from __future__ import annotations
+
+from typing import Any, Optional, Union
+
 from node_classes import (
     Node, FunctionorArraysAccess, Call, Variable, Read, Declaration, ArrayId,
     IntVal, RealVal, MainProgram, Function, Subroutine,
     LabeledStatement, Assignment, Print, Write, BinOp, UnOp, Goto, Label,
+    Expression, Statement, Program_Unit,
 )
-from semantic_parser import get_name
+from semantic_parser import get_name, SemanticParser
 
 class ASTOptimizer:
-    def __init__(self):
-        self.optimized_nodes = 0
-        self.semantic_info = None
-        self.warnings = []
+    def __init__(self) -> None:
+        self.optimized_nodes: int = 0
+        self.semantic_info: Optional[SemanticParser] = None
+        self.warnings: list[str] = []
 
-    def set_semantic_info(self, semantic_info):
+    def set_semantic_info(self, semantic_info: SemanticParser) -> None:
         self.semantic_info = semantic_info
 
-    def optimize_program(self, ast):
+    def optimize_program(self, ast: list[Program_Unit]) -> list[Program_Unit]:
         if isinstance(ast, list):
-            main_unit = None
-            units_by_name = {}
+            main_unit: Optional[MainProgram] = None
+            units_by_name: dict[str, Program_Unit] = {}
             for unit in ast:
                 if isinstance(unit, MainProgram):
                     main_unit = unit
@@ -29,8 +34,8 @@ class ASTOptimizer:
                     ast[i] = self.optimize_node(unit)
                 return ast
 
-            reachable = set()
-            queue = []
+            reachable: set[str] = set()
+            queue: list[Program_Unit] = []
 
             main_name = get_name(main_unit.name) if getattr(main_unit, 'name', None) is not None else "MAIN"
             reachable.add(main_name)
@@ -38,14 +43,14 @@ class ASTOptimizer:
 
             while queue:
                 current = queue.pop(0)
-                called = set()
+                called: set[str] = set()
                 for stmt in getattr(current, 'labeled_statements', []) or []:
                     self._collect_called_units_from_node(stmt, called)
 
                 for cname in called:
                     if cname in reachable:
                         continue
-                    target = None
+                    target: Optional[Program_Unit] = None
                     for unit in ast:
                         if getattr(unit, 'name', None) is None:
                             continue
@@ -56,7 +61,7 @@ class ASTOptimizer:
                         reachable.add(cname)
                         queue.append(target)
 
-            new_ast = []
+            new_ast: list[Program_Unit] = []
             for unit in ast:
                 if isinstance(unit, MainProgram):
                     new_ast.append(unit)
@@ -75,7 +80,7 @@ class ASTOptimizer:
                 ast[i] = self.optimize_node(unit)
         return ast
 
-    def _collect_called_units_from_node(self, node, called_set: set):
+    def _collect_called_units_from_node(self, node: Union[Node, list[Node], None], called_set: set[str]) -> None:
         if node is None:
             return
         if isinstance(node, list):
@@ -100,7 +105,7 @@ class ASTOptimizer:
             elif hasattr(attr, '__dict__'):
                 self._collect_called_units_from_node(attr, called_set)
 
-    def optimize_node(self, node):
+    def optimize_node(self, node: Union[Node, list[Node], None]) -> Union[Node, list[Node], None]:
         if node is None:
             return None
         
@@ -115,28 +120,29 @@ class ASTOptimizer:
             return method(node)
         else:
             if node is not None:
-                print(f"ERROR: Optimization not implemented for: {method_name}")
+                # print(f"ERROR: Optimization not implemented for: {method_name}")
+                pass
             return node
             
-    def optimize_MainProgram(self, node):
+    def optimize_MainProgram(self, node: MainProgram) -> MainProgram:
         if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
+            node.labeled_statements = self.optimize_node(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
-    def optimize_Function(self, node):
+    def optimize_Function(self, node: Function) -> Function:
         if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
+            node.labeled_statements = self.optimize_node(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
-    def optimize_Subroutine(self, node):
+    def optimize_Subroutine(self, node: Subroutine) -> Subroutine:
         if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
+            node.labeled_statements = self.optimize_node(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
-    def _collect_used_vars(self, node, used):
+    def _collect_used_vars(self, node: Union[Node, list[Node], None], used: set[str]) -> None:
         if node is None:
             return
         if isinstance(node, list):
@@ -166,8 +172,8 @@ class ASTOptimizer:
             elif isinstance(attr_val, Node):
                 self._collect_used_vars(attr_val, used)
 
-    def _remove_unused_declarations(self, unit):
-        used_vars = set()
+    def _remove_unused_declarations(self, unit: Program_Unit) -> None:
+        used_vars: set[str] = set()
         for stmt in getattr(unit, 'labeled_statements', []) or []:
             self._collect_used_vars(stmt, used_vars)
         if isinstance(unit, (Function, Subroutine)):
@@ -179,9 +185,9 @@ class ASTOptimizer:
         unit_name = get_name(unit.name) if getattr(unit, 'name', None) is not None else "MAIN"
 
         if hasattr(unit, 'declarations') and unit.declarations:
-            new_declarations = []
+            new_declarations: list[Declaration] = []
             for decl in unit.declarations:
-                new_ids = []
+                new_ids: list[ArrayId] = []
                 for array_id in decl.Ids:
                     var_name = get_name(array_id.name)
                     if var_name in used_vars:
@@ -198,7 +204,7 @@ class ASTOptimizer:
 
         if self.semantic_info is not None:
             symbols = self.semantic_info.unit_symbols.get(unit_name, {})
-            to_remove = []
+            to_remove: list[str] = []
             for sym_name, sym_info in symbols.items():
                 if sym_info.get('is_function') or sym_info.get('is_subroutine'):
                     continue
@@ -207,30 +213,29 @@ class ASTOptimizer:
             for sym_name in to_remove:
                 del symbols[sym_name]
         
-    def optimize_LabeledStatement(self, node):
+    def optimize_LabeledStatement(self, node: LabeledStatement) -> LabeledStatement:
         if node.statement:
             node.statement = self.optimize_node(node.statement)
         return node
 
-    def optimize_Assignment(self, node):
+    def optimize_Assignment(self, node: Assignment) -> Assignment:
         if hasattr(node, 'value'):
             node.value = self.optimize_node(node.value)
         if hasattr(node, 'name') and hasattr(node.name, 'expressionList'):
             node.name.expressionList = [self.optimize_node(e) for e in node.name.expressionList]
         return node
 
-    def optimize_Print(self, node):
-        if hasattr(node, 'expressionList') and node.expressionList:
-            node.expressionList = [self.optimize_node(e) for e in node.expressionList]
+    def optimize_Print(self, node: Print) -> Print:
+        if hasattr(node, 'iolist') and node.iolist:
+            node.iolist = [self.optimize_node(e) for e in node.iolist]
         return node
         
-    def optimize_Write(self, node):
+    def optimize_Write(self, node: Write) -> Write:
         if hasattr(node, 'iolist') and node.iolist:
             node.iolist = [self.optimize_node(e) for e in node.iolist]
         return node
 
-    def optimize_BinOp(self, node):
-        original_right = node.right
+    def optimize_BinOp(self, node: BinOp) -> Union[BinOp, IntVal, RealVal]:
         node.left = self.optimize_node(node.left)
         node.right = self.optimize_node(node.right)
         
@@ -240,7 +245,7 @@ class ASTOptimizer:
             v2 = node.right.value
             
             try:
-                res = None
+                res: Optional[Union[int, float]] = None
                 if op == '+':
                     res = v1 + v2
                 elif op == '-':
@@ -250,6 +255,7 @@ class ASTOptimizer:
                 elif op == '/':
                     if v2 == 0:
                         if self.semantic_info is not None:
+                            original_right = node.right
                             already_literal_zero = isinstance(original_right, (IntVal, RealVal)) and original_right.value == 0
                             if not already_literal_zero:
                                 lineno = getattr(node, 'lineno', None)
@@ -263,6 +269,7 @@ class ASTOptimizer:
                     if v1 == 0 and v2 < 0:
                         if self.semantic_info is not None:
                             original_left = node.left
+                            original_right = node.right
                             already_literal = (isinstance(original_left, (IntVal, RealVal)) and original_left.value == 0) and \
                                               (isinstance(original_right, (IntVal, RealVal)) and original_right.value < 0)
                             if not already_literal:
@@ -322,12 +329,40 @@ class ASTOptimizer:
                 pass
         return node
 
-    def optimize_statement_list(self, lst):
+    def optimize_UnOp(self, node: UnOp) -> Union[UnOp, IntVal, RealVal]:
+        node.expr = self.optimize_node(node.expr)
+        
+        if type(node.expr) in (IntVal, RealVal):
+            op = node.op
+            v = node.expr.value
+            try:
+                res: Optional[Union[int, float]] = None
+                if op == '+':
+                    res = +v
+                elif op == '-':
+                    res = -v
+                
+                if res is not None:
+                    self.optimized_nodes += 1
+                    if isinstance(res, int) or type(node.expr) is IntVal:
+                        new_node = IntVal(int(res))
+                    else:
+                        new_node = RealVal(float(res))
+                    
+                    if hasattr(node, 'expr_type'):
+                        new_node.expr_type = node.expr_type
+                    new_node.lineno = node.lineno
+                    return new_node
+            except Exception:
+                pass
+        return node
+
+    def optimize_statement_list(self, lst: list[LabeledStatement]) -> list[LabeledStatement]:
         if not lst:
             return lst
             
-        new_list = []
-        dead_code = False
+        new_list: list[LabeledStatement] = []
+        dead_code: bool = False
         
         for item in lst:
             if dead_code:
@@ -345,13 +380,13 @@ class ASTOptimizer:
                 if type(stmt).__name__ in ('Goto', 'Return'):
                     dead_code = True
                 
-        label_targets = {}
+        label_targets: dict[str, Optional[Statement]] = {}
         for item in new_list:
             if getattr(item, 'label', None) is not None:
                 label_val = get_name(item.label)
                 label_targets[label_val] = getattr(item, 'statement', None)
                 
-        replacements = {}
+        replacements: dict[str, Label] = {}
         for lbl, stmt in label_targets.items():
             if type(stmt).__name__ == 'Goto':
                 target_lbl = get_name(stmt.label)
@@ -363,7 +398,7 @@ class ASTOptimizer:
         
         return new_list
 
-    def _apply_goto_replacements(self, nodes, replacements):
+    def _apply_goto_replacements(self, nodes: list[LabeledStatement], replacements: dict[str, Label]) -> None:
         for node in nodes:
             if isinstance(node, LabeledStatement):
                 stmt = getattr(node, 'statement', None)

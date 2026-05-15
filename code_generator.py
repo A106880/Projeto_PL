@@ -1,45 +1,47 @@
-from node_classes import MainProgram, Function, StringVal, Expression, Variable, FunctionorArraysAccess
+from __future__ import annotations
+from typing import Optional, Dict, List, Any
+from node_classes import StringVal, Variable, FunctionorArraysAccess
 
 
 class EnvVar:
-    def __init__(self, name, scope, offset, var_type, is_ref=False):
-        self.name = name
-        self.scope = scope  # 'GLOBAL' ou 'LOCAL'
-        self.offset = offset
-        self.type = var_type
-        self.is_ref = is_ref
+    def __init__(self, name: str, scope: str, offset: int, var_type: str, is_ref: bool = False) -> None:
+        self.name: str = name
+        self.scope: str = scope  # 'GLOBAL' ou 'LOCAL'
+        self.offset: int = offset
+        self.type: str = var_type
+        self.is_ref: bool = is_ref
 
 
 class CodeGenerator:
-    def __init__(self):
-        self.instructions = []
-        self.globals = {}
-        self.locals = {}
-        self.gp_offset = 0
-        self.fp_offset = 0
-        self.semantic_info = None
+    def __init__(self) -> None:
+        self.instructions: List[str] = []
+        self.globals: Dict[str, EnvVar] = {}
+        self.locals: Dict[str, EnvVar] = {}
+        self.gp_offset: int = 0
+        self.fp_offset: int = 0
+        self.semantic_info: Optional[Any] = None
 
-    def set_semantic_info(self, parser):
+    def set_semantic_info(self, parser: Any) -> None:
         self.semantic_info = parser
 
-    def add_global(self, name, var_type, size=1):
+    def add_global(self, name: str, var_type: str, size: int = 1) -> EnvVar:
         var = EnvVar(name, "GLOBAL", self.gp_offset, var_type)
         self.globals[name] = var
         self.gp_offset += size
         return var
 
-    def add_local(self, name, var_type, is_ref=False, size=1):
+    def add_local(self, name: str, var_type: str, is_ref: bool = False, size: int = 1) -> EnvVar:
         var = EnvVar(name, "LOCAL", self.fp_offset, var_type, is_ref)
         self.locals[name] = var
         self.fp_offset += size
         return var
 
-    def lookup(self, name):
+    def lookup(self, name: str) -> Optional[EnvVar]:
         if name in self.locals:
             return self.locals[name]
         return self.globals.get(name)
 
-    def generate(self, node):
+    def generate(self, node: Any) -> None:
         if node is None:
             return
 
@@ -59,14 +61,14 @@ class CodeGenerator:
             if node is not None:
                 print(f"ERROR: Generation function not implemented: {method_name}")
 
-    def generate_Program_Unit(self, ast):
+    def generate_Program_Unit(self, ast: Any) -> None:
         if isinstance(ast, list):
             for unit in ast:
                 self.generate(unit)
         else:
             self.generate(ast)
 
-    def generate_MainProgram(self, node):
+    def generate_MainProgram(self, node: Any) -> None:
         self.instructions.append("START")
         
         unit_name = node.name.name if hasattr(node.name, "name") else (node.name or "MAIN")
@@ -86,13 +88,13 @@ class CodeGenerator:
         self.generate(node.labeled_statements)
         self.instructions.append("STOP")
 
-    def generate_LabeledStatement(self, node):
+    def generate_LabeledStatement(self, node: Any) -> None:
         if node.label:
             print(f"WARNING: Label generation ({node.label}) is not yet implemented in the CodeGen.")
         if node.statement:
             self.generate(node.statement)
 
-    def generate_Assignment(self, node):
+    def generate_Assignment(self, node: Any) -> None:
         var_name = node.name.name if hasattr(node.name, "name") else node.name
         
         # Se for atribuição a um array ARR(I) = valor
@@ -152,7 +154,7 @@ class CodeGenerator:
         else:
             print(f"DEBUG: Variable {var_name} not found in environment!")
 
-    def generate_Print(self, node):
+    def generate_Print(self, node: Any) -> None:
         if node.iolist:
             for item in node.iolist:
                 self.generate(item)
@@ -179,27 +181,27 @@ class CodeGenerator:
                     self.instructions.append("WRITEI")  # Fallback
         self.instructions.append("WRITELN")
 
-    def generate_IntVal(self, node):
+    def generate_IntVal(self, node: Any) -> None:
         self.instructions.append(f"PUSHI {node.value}")
 
-    def generate_RealVal(self, node):
+    def generate_RealVal(self, node: Any) -> None:
         self.instructions.append(f"PUSHF {node.value}")
 
-    def generate_ComplexVal(self, node):
+    def generate_ComplexVal(self, node: Any) -> None:
         self.generate(node.elem1)
         self.generate(node.elem2)
 
-    def generate_DoublePrecisionComplexVal(self, node):
+    def generate_DoublePrecisionComplexVal(self, node: Any) -> None:
         self.generate_ComplexVal(node)
 
-    def generate_StringVal(self, node):
+    def generate_StringVal(self, node: Any) -> None:
         self.instructions.append(f'PUSHS "{node.value}"')
 
-    def generate_LogicalVal(self, node):
+    def generate_LogicalVal(self, node: Any) -> None:
         val = 1 if node.value else 0
         self.instructions.append(f"PUSHI {val}")
 
-    def generate_Variable(self, node):
+    def generate_Variable(self, node: Any) -> None:
         var = self.lookup(node.name)
         if var:
             is_complex = var.type == "COMPLEX"
@@ -220,7 +222,7 @@ class CodeGenerator:
                 if is_complex:
                     self.instructions.append(f"PUSHL {var.offset + 1}")
 
-    def generate_BinOp(self, node):
+    def generate_BinOp(self, node: Any) -> None:
         op = node.op
         t = getattr(node, "expr_type", "INTEGER")
         
@@ -304,7 +306,7 @@ class CodeGenerator:
             self.instructions.append("PUSHI 0")
             self.instructions.append("GT")
 
-    def generate_UnOp(self, node):
+    def generate_UnOp(self, node: Any) -> None:
         self.generate(node.expr)
         op = node.op
         if op == "-":
@@ -321,7 +323,7 @@ class CodeGenerator:
             self.instructions.append("SWAP")
             self.instructions.append("SUB")
 
-    def generate_Function(self, node):
+    def generate_Function(self, node: Any) -> None:
         func_name = node.name.name if hasattr(node.name, "name") else node.name
         self.instructions.append(f"{func_name}:")
 
@@ -368,10 +370,10 @@ class CodeGenerator:
         self.locals = old_locals
         self.fp_offset = old_fp_offset
 
-    def generate_Return(self, node):
+    def generate_Return(self, node: Any) -> None:
         self.instructions.append("RETURN")
 
-    def generate_FunctionorArraysAccess(self, node):
+    def generate_FunctionorArraysAccess(self, node: Any) -> None:
         name = node.name.name if hasattr(node.name, "name") else node.name
         
         if node.is_array:
@@ -427,5 +429,5 @@ class CodeGenerator:
         else:
             print(f"DEBUG: {name} is neither marked as array nor function!")
 
-    def get_assembly(self):
+    def get_assembly(self) -> str:
         return "\n".join(self.instructions)

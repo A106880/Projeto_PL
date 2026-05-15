@@ -1,6 +1,12 @@
 import ply.yacc as yacc
-from node_classes import MainProgram, Function, Declaration, Subroutine, BinOp, UnOp, ArrayId, DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod, Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO, ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label, FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal
-from arithmetic_lexer import tokens, lex
+from node_classes import (
+    MainProgram, Function, Declaration, Subroutine, BinOp, UnOp, ArrayId,
+    DoublePrecisionComplexVal, ComplexVal, LabeledStatement, Assignment, Mod,
+    Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO,
+    ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label,
+    FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal,
+)
+from arithmetic_lexer import tokens
 
 
 precedence = (
