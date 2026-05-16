@@ -485,7 +485,7 @@ class SemanticParser:
 
     _comparison_ops: Set[str] = {'.EQ.', '.NE.', '.LT.', '.LE.', '.GT.', '.GE.'}
 
-    _logical_ops: Set[str] = {'.AND.', '.OR.'}
+    _logical_ops: Set[str] = {'.AND.', '.OR.', '.EQV.', '.NEQV.'}
 
     _numeric_types: Set[str] = {'INTEGER', 'REAL', 'DOUBLEPRECISION', 'COMPLEX', 'DOUBLECOMPLEX'}
 

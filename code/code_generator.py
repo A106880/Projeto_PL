@@ -489,6 +489,12 @@ class CodeGenerator:
         elif op == ".GE.":
             self.instructions.append(f"{prefix}SUPEQ")
         
+        elif op == ".EQV.":
+            self.instructions.append("EQUAL")
+        elif op == ".NEQV.":
+            self.instructions.append("EQUAL")
+            self.instructions.append("NOT")
+        
         # Lógicos com Curto-circuito
         elif op == ".AND.":
             self._label_count += 1

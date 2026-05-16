@@ -10,6 +10,7 @@ from arithmetic_lexer import tokens
 
 
 precedence = (
+    ('left', 'EQV', 'NEQV'),   # .EQV., .NEQV. (Lowest)
     ('left', 'OR'),            # .OR.
     ('left', 'AND'),           # .AND.
     ('right', 'NOT'),          # .NOT.
@@ -419,12 +420,15 @@ def p_else_body(p):
         p[0].lineno = p.lineno(1)
 
 def p_print(p):
-    '''Print : PRINT Format Iolist'''
-    print = Print(
-        format=p[2],
-        iolist=p[3]
-    )
-    p[0] = print
+    '''Print : PRINT Format
+             | PRINT Format ',' Dlist
+             | PRINT Format Dlist'''
+    if len(p) == 3:
+        p[0] = Print(format=p[2], iolist=[])
+    elif len(p) == 5:
+        p[0] = Print(format=p[2], iolist=p[4])
+    else:
+        p[0] = Print(format=p[2], iolist=p[3])
     p[0].lineno = p.lineno(1)
 
 def p_format(p):
@@ -432,13 +436,13 @@ def p_format(p):
               | INTVAL'''
     p[0] = p[1]
 
-def p_iolist(p):
-    '''Iolist : ',' Expression Iolist
-              | empty'''
-    if len(p)>2:
-        p[0] = [p[2]]+p[3]
+def p_dlist(p):
+    '''Dlist : Expression
+             | Expression ',' Dlist'''
+    if len(p) == 2:
+        p[0] = [p[1]]
     else:
-        p[0] = []
+        p[0] = [p[1]] + p[3]
 
 def p_expression_binop(p):
     '''Expression : Expression '+' Expression
@@ -454,7 +458,9 @@ def p_expression_binop(p):
                   | Expression GT Expression
                   | Expression GE Expression
                   | Expression AND Expression
-                  | Expression OR Expression'''
+                  | Expression OR Expression
+                  | Expression EQV Expression
+                  | Expression NEQV Expression'''
     p[0] = BinOp(left=p[1], op=p[2], right=p[3])
     p[0].lineno = p.lineno(1)
 
@@ -531,13 +537,36 @@ def p_expression_list(p):
         p[0] = []
 
 def p_write(p):
-    '''Write : WRITE '(' Format ',' Format ')' Iolist'''
-    p[0] = Write(unit=p[3], format=p[5], iolist=p[7])
+    '''Write : WRITE '(' Format ',' Format ')'
+             | WRITE '(' Format ',' Format ')' Dlist
+             | WRITE '(' Format ',' Format ')' ',' Dlist'''
+    if len(p) == 7:
+        p[0] = Write(unit=p[3], format=p[5], iolist=[])
+    elif len(p) == 8:
+        p[0] = Write(unit=p[3], format=p[5], iolist=p[7])
+    else:
+        p[0] = Write(unit=p[3], format=p[5], iolist=p[8])
     p[0].lineno = p.lineno(1)
 
 def p_read(p):
-    '''Read : READ Format Iolist'''
-    p[0] = Read(format=p[2], iolist=p[3])
+    '''Read : READ Format
+            | READ Format ',' Dlist
+            | READ Format Dlist
+            | READ '(' Format ',' Format ')'
+            | READ '(' Format ',' Format ')' Dlist
+            | READ '(' Format ',' Format ')' ',' Dlist'''
+    if len(p) == 3:
+        p[0] = Read(format=p[2], iolist=[])
+    elif len(p) == 5:
+        p[0] = Read(format=p[2], iolist=p[4])
+    elif len(p) == 4:
+        p[0] = Read(format=p[2], iolist=p[3])
+    elif len(p) == 7:
+        p[0] = Read(format=p[5], iolist=[])
+    elif len(p) == 8:
+        p[0] = Read(format=p[5], iolist=p[7])
+    else:
+        p[0] = Read(format=p[5], iolist=p[8])
     p[0].lineno = p.lineno(1)
 
 def p_error(p):
