@@ -136,14 +136,7 @@ class Function(Program_Unit):
         ,declarations:List[Declaration], labeled_statements:List[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
         self.arguments = arguments
-        if return_type is None:
-            n_name = name if isinstance(name, str) else str(name)
-            if n_name.startswith(('N', 'I')):
-                self.return_type = "INTEGER"
-            else:
-                self.return_type = "REAL"
-        else:
-            self.return_type = return_type
+        self.return_type = return_type
 
     def __repr__(self) -> str:
         return self.repr(0)

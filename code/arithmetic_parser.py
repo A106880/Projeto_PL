@@ -25,10 +25,10 @@ precedence = (
 #Program -> ProgramUnit Program |
 #               Vazio
 def p_Program(p):
-    '''Program : OptNewLines ProgramUnit Program
-               | OptNewLines'''
+    '''Program : ProgramUnit OptNewLines Program
+               | empty'''
     if len(p) == 4:
-        p[0] = [p[2]] + p[3]
+        p[0] = [p[1]] + p[3]
     else:
         p[0] = []
 
@@ -42,7 +42,7 @@ def p_ProgramUnit(p):
 
 # p1: Main -> Functions PROGRAM ID\n Declaritions LabeledStatements END\n Functions
 def p_main(p):
-    '''Main : PROGRAM ID NewLines Declarations LabeledStatements END'''
+    '''Main : PROGRAM ID NewLines Declarations LabeledStatements OptNewLines END'''
     p[0] = MainProgram(
         name=p[2],
         declarations=p[4],
@@ -489,14 +489,22 @@ def p_expression_val(p):
 
 # Subroutine -> SUBROUTINE ID (ArgumentList)\n Declarations LabeledStatements END\n
 def p_Subroutine(p):
-    '''Subroutine :  SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END'''
-    p[0] = Subroutine(p[2],p[4],p[7],p[8])
+    '''Subroutine :  SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements OptNewLines END
+                  |  SUBROUTINE ID NewLines Declarations LabeledStatements OptNewLines END'''
+    if len(p) == 11:
+        p[0] = Subroutine(p[2],p[4],p[7],p[8])
+    else:
+        p[0] = Subroutine(p[2],[],p[4],p[5])
     p[0].lineno = p.lineno(1)
 
 #Call -> CALL ID (ArgumentList)
 def p_Call(p):
-    '''Call : CALL ID '(' ExpressionListStart ')' '''
-    p[0] = Call(p[2], p[4])
+    '''Call : CALL ID '(' ExpressionListStart ')'
+            | CALL ID'''
+    if len(p) > 3:
+        p[0] = Call(p[2], p[4])
+    else:
+        p[0] = Call(p[2], [])
     p[0].lineno = p.lineno(1)
 
 

@@ -40,25 +40,31 @@ class SymbolTable:
 
     def declare(self, name: str, var_type: Optional[str], is_array: bool = False, array_size: int = 0) -> Tuple[bool, str]:
         scope = self._scopes[-1]
+        
+        # Se estamos num escopo local (len > 1), verificar se não choca com nome de subrotina/função global
         if len(self._scopes) > 1:
             global_scope = self._scopes[0]
-            if name in global_scope and global_scope[name].get("is_function"):
-                if not is_array:
-                    global_type = global_scope[name].get("type")
+            if name in global_scope:
+                info = global_scope[name]
+                if info.get("is_function"):
+                    global_type = info.get("type")
                     if global_type is None and var_type is not None:
-                        global_scope[name]["type"] = var_type
+                        info["type"] = var_type
+                        return True, ""
                     elif global_type is not None and var_type is not None and global_type != var_type:
                         return False, f"Conflicting type declaration for function: '{name}'"
                     return True, ""
+                elif info.get("is_subroutine"):
+                    return False, f"Name '{name}' already used as a subroutine"
 
         if name in scope:
-
             if scope[name].get("type") is None and var_type is not None:
                 scope[name]["type"] = var_type
                 scope[name]["is_array"] = is_array
                 scope[name]["array_size"] = array_size
                 return True, ""
             return False, f"Duplicate declaration: '{name}'"
+        
         scope[name] = {
             "type": var_type,
             "initialized": False,
@@ -89,6 +95,9 @@ class SymbolTable:
         params_str = [get_name(p) for p in params]
         scope = self._scopes[0]
 
+        if name_str in scope:
+            return False, f"Duplicate program unit name: '{name_str}'"
+
         scope[name_str] = {
             "type": ret_type_str,
             "initialized": True,
@@ -101,6 +110,10 @@ class SymbolTable:
         name_str = get_name(name)
         params_str = [get_name(p) for p in params]
         scope = self._scopes[0]
+
+        if name_str in scope:
+            return False, f"Duplicate program unit name: '{name_str}'"
+
         scope[name_str] = {
             "type": None,
             "initialized": True,
@@ -146,8 +159,17 @@ class SemanticParser:
         self.program_units = {}
         self.unit_symbols = {} # Guarda a tabela de símbolos de cada unidade
         
+    def get_implicit_type(self, name: str) -> str:
+        if name and name[0].upper() in 'IJKLMN':
+            return "INTEGER"
+        return "REAL"
 
-
+    def apply_implicit_typing(self) -> None:
+        # Aplica regra I-N a todos os símbolos do escopo atual que não têm tipo
+        scope = self.symbols._scopes[-1]
+        for name, info in scope.items():
+            if not info.get("is_subroutine") and info.get("type") is None:
+                info["type"] = self.get_implicit_type(name)
 
     def verify(self, node: Any) -> Any:
         if node is None:
@@ -195,6 +217,7 @@ class SemanticParser:
         self._used_labels.clear()
         self.symbols.push_scope()
         self.process_declarations(node.declarations)
+        self.apply_implicit_typing() # Aplica regra I-N após declarações explícitas
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
         self.collect_labeled_do_bodies(node.labeled_statements)
@@ -222,9 +245,11 @@ class SemanticParser:
             else:
                 seen_args.add(name)
                 self.symbols.declare(name, None)
+                self.symbols.initialize(name) # Argumentos são considerados inicializados pela chamada
 
         self.symbols.declare(func_name, ret_type)
         self.process_declarations(node.declarations)
+        self.apply_implicit_typing() # Aplica regra I-N após declarações explícitas
 
         # Verificar atribuição de retorno
         local_scope = self.symbols._scopes[-1]
@@ -246,8 +271,8 @@ class SemanticParser:
         if func_symbol:
             func_symbol["initialized"] = True
 
-        # Salvar tabela de símbolos da unidade
-        self.unit_symbols[func_name] = dict(self.symbols._scopes[-1])
+        # Salvar tabela de símbolos da unidade (incluindo acesso a globais se necessário para debug)
+        self.unit_symbols[func_name] = {**self.symbols._scopes[0], **self.symbols._scopes[-1]}
         self.symbols.pop_scope()
         self._in_function = False
         self._current_unit_name = None
@@ -269,6 +294,7 @@ class SemanticParser:
             else:
                 seen_args.add(name)
                 self.symbols.declare(name, None)
+                self.symbols.initialize(name) # Argumentos inicializados pela chamada
 
         self.process_declarations(node.declarations)
 
@@ -629,6 +655,13 @@ class SemanticParser:
                 if info is None:
                     self.errors.add_error(f"Undeclared variable: '{name}'", current_lineno)
                     return None
+                
+                # Verificar se a variável foi inicializada (exceto se for argumento de função, mas por agora check básico)
+                if not info.get("initialized"):
+                    # Evitar erro se estivermos numa função e o nome for o da própria função (valor de retorno)
+                    if not (self._in_function and name == self._current_unit_name):
+                        self.errors.add_error(f"Usage of uninitialized variable: '{name}'", current_lineno)
+                
                 return info.get("type")
             if isinstance(expr, ComplexVal):
                 return "COMPLEX"
@@ -770,9 +803,11 @@ class SemanticParser:
         var_info = self.symbols.lookup(var_name)
         if not var_info:
             self.errors.add_error(f"Labeled DO loop control variable '{var_name}' is not declared.", lineno)
-        elif var_info.get("type") not in allowed_numeric_types:
-            self.errors.add_error(f"Labeled DO loop control variable '{var_name}' must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {var_info.get('type')}.", lineno)
-        
+        else:
+            if var_info.get("type") not in allowed_numeric_types:
+                self.errors.add_error(f"Labeled DO loop control variable '{var_name}' must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {var_info.get('type')}.", lineno)
+            self.symbols.initialize(var_name) # Inicializada pelo ciclo DO
+
         init_type = self.verify_expression(node.control_var_init_value, lineno)
         if init_type not in allowed_numeric_types:
             self.errors.add_error(f"Labeled DO loop initial value must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {init_type}.", lineno)
@@ -796,8 +831,10 @@ class SemanticParser:
         var_info = self.symbols.lookup(var_name)
         if not var_info:
             self.errors.add_error(f"Block DO loop control variable '{var_name}' is not declared.", lineno)
-        elif var_info.get("type") not in allowed_numeric_types:
-            self.errors.add_error(f"Block DO loop control variable '{var_name}' must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {var_info.get('type')}.", lineno)
+        else:
+            if var_info.get("type") not in allowed_numeric_types:
+                self.errors.add_error(f"Block DO loop control variable '{var_name}' must be numeric (INTEGER, REAL, DOUBLEPRECISION), got {var_info.get('type')}.", lineno)
+            self.symbols.initialize(var_name) # Inicializada pelo ciclo DO
 
         init_type = self.verify_expression(node.init_value, lineno)
         if init_type not in allowed_numeric_types:
