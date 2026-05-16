@@ -195,6 +195,100 @@ class CodeGenerator:
                     self.instructions.append("WRITEI")  # Fallback
         self.instructions.append("WRITELN")
 
+    def generate_Write(self, node: Any) -> None:
+        if node.iolist:
+            for item in node.iolist:
+                self.generate(item)
+                t = getattr(item, "expr_type", "INTEGER")
+                if isinstance(item, StringVal):
+                    self.instructions.append("WRITES")
+                elif t == "INTEGER":
+                    self.instructions.append("WRITEI")
+                elif t == "REAL":
+                    self.instructions.append("WRITEF")
+                elif t == "COMPLEX":
+                    self.instructions.append('PUSHS "("')
+                    self.instructions.append("WRITES")
+                    self.instructions.append("SWAP") 
+                    self.instructions.append("WRITEF")
+                    self.instructions.append('PUSHS ", "')
+                    self.instructions.append("WRITES")
+                    self.instructions.append("WRITEF")
+                    self.instructions.append('PUSHS ")"')
+                    self.instructions.append("WRITES")
+                elif t == "LOGICAL":
+                    self.instructions.append("WRITEI")
+                else:
+                    self.instructions.append("WRITEI")
+        self.instructions.append("WRITELN")
+
+    def generate_Read(self, node: Any) -> None:
+        if node.iolist:
+            for item in node.iolist:
+                # 1. Ler da entrada (instrução READ da VM coloca endereço da string na stack)
+                self.instructions.append("READ")
+                
+                # 2. Determinar o tipo do destino
+                t = getattr(item, "expr_type", "INTEGER")
+                
+                # 3. Converter se necessário
+                if t == "INTEGER":
+                    self.instructions.append("ATOI")
+                elif t == "REAL":
+                    self.instructions.append("ATOF")
+                
+                # 4. Armazenar no destino
+                if isinstance(item, Variable):
+                    var_name = item.name
+                    var = self.lookup(var_name)
+                    if var:
+                        if var.scope == "GLOBAL":
+                            self.instructions.append(f"STOREG {var.offset}")
+                        else:
+                            self.instructions.append(f"STOREL {var.offset}")
+                elif isinstance(item, FunctionorArraysAccess):
+                    var_name = item.name.name if hasattr(item.name, "name") else item.name
+                    var = self.lookup(var_name)
+                    if var:
+                        # Precisamos do endereço base + (índice - 1)
+                        # Como já temos o valor convertido no topo da stack, 
+                        # vamos guardá-lo temporariamente ou preparar o endereço primeiro.
+                        
+                        # 1. Calcular Endereço (precisamos fazer isso ANTES do READ ou usar SWAP)
+                        # Vamos reformular:
+                        # 1. Calcular Endereço e colocar na pilha
+                        # 2. READ
+                        # 3. ATOI/ATOF
+                        # 4. STORE 0
+                        
+                        # Voltamos atrás no READ para este item:
+                        self.instructions.pop() # remove converter se houver
+                        if t in ("INTEGER", "REAL"):
+                            self.instructions.pop() # remove converter
+                        self.instructions.pop() # remove READ
+                        
+                        # Agora sim:
+                        if var.scope == "GLOBAL":
+                            self.instructions.append("PUSHGP")
+                        else:
+                            self.instructions.append("PUSHFP")
+                        self.instructions.append(f"PUSHI {var.offset}")
+                        self.instructions.append("PADD")
+                        
+                        self.generate(item.expressionList[0])
+                        self.instructions.append("PUSHI 1")
+                        self.instructions.append("SUB")
+                        self.instructions.append("PADD") # Endereço final na pilha
+                        
+                        # Agora o READ
+                        self.instructions.append("READ")
+                        if t == "INTEGER":
+                            self.instructions.append("ATOI")
+                        elif t == "REAL":
+                            self.instructions.append("ATOF")
+                        
+                        self.instructions.append("STORE 0")
+
     def generate_IntVal(self, node: Any) -> None:
         self.instructions.append(f"PUSHI {node.value}")
 

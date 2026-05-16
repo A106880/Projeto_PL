@@ -382,16 +382,20 @@ class SemanticParser:
         for item in node.iolist:
             if isinstance(item, Variable):
                 name = item.name
-                if not self.symbols.is_declared(name):
+                info = self.symbols.lookup(name)
+                if info is None:
                     self.errors.add_error(f"Undeclared variable in READ: '{name}'", lineno)
                 else:
                     self.symbols.initialize(name)
+                    item.expr_type = info.get("type")
             elif isinstance(item, FunctionorArraysAccess):
                 name = get_name(item.name)
-                if not self.symbols.is_declared(name):
+                info = self.symbols.lookup(name)
+                if info is None:
                     self.errors.add_error(f"Undeclared variable in READ: '{name}'", lineno)
                 else:
                     self.symbols.initialize(name)
+                    item.expr_type = info.get("type")
                 for expr in item.expressionList:
                     self.verify_expression(expr, lineno)
 
@@ -681,7 +685,14 @@ class SemanticParser:
         elif left_type and right_type and left_type != right_type:
             self.errors.add_error(f"Different types on Mod, left type = {left_type} and right type = {right_type}", lineno)
         return None
-        
+
+    def verify_Return(self, node: Return) -> None:
+        if not self._in_function and not self._in_subroutine:
+            self.errors.add_error("RETURN statement outside of FUNCTION or SUBROUTINE", node.lineno)
+
+    def verify_Continue(self, node: Continue) -> None:
+        pass
+
     def verify_Statement(self, node: Statement) -> None:
         if isinstance(node, Goto):
             self.verify_Goto(node)
