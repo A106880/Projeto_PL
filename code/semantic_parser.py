@@ -11,7 +11,7 @@ from node_classes import (
     ArithmeticIf, LogicIf, BlockIf, LabeledDO, BlockDO,
     ComplexVal, DoublePrecisionComplexVal, Label,
     IntVal, RealVal, StringVal, LogicalVal, Expression,
-    Statement
+    Statement, Return, Continue
 )
 
 translate: Dict[str, type] = {
