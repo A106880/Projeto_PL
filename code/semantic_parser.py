@@ -343,8 +343,10 @@ class SemanticParser:
         
         info = self.symbols.lookup(target_name)
         if not info:
-            self.errors.add_error(f"Undeclared variable: {target_name}", lineno)
-            return
+            # Declarar implicitamente se não existir (Regra I-N)
+            implicit_type = self.get_implicit_type(target_name)
+            self.symbols.declare(target_name, implicit_type)
+            info = self.symbols.lookup(target_name)
 
         if info.get("is_subroutine"):
             self.errors.add_error(f"Cannot assign to subroutine name: {target_name}", lineno)
@@ -410,18 +412,24 @@ class SemanticParser:
                 name = item.name
                 info = self.symbols.lookup(name)
                 if info is None:
-                    self.errors.add_error(f"Undeclared variable in READ: '{name}'", lineno)
-                else:
-                    self.symbols.initialize(name)
-                    item.expr_type = info.get("type")
+                    # Declarar implicitamente se não existir (Regra I-N)
+                    implicit_type = self.get_implicit_type(name)
+                    self.symbols.declare(name, implicit_type)
+                    info = self.symbols.lookup(name)
+                
+                self.symbols.initialize(name)
+                item.expr_type = info.get("type")
             elif isinstance(item, FunctionorArraysAccess):
                 name = get_name(item.name)
                 info = self.symbols.lookup(name)
                 if info is None:
-                    self.errors.add_error(f"Undeclared variable in READ: '{name}'", lineno)
-                else:
-                    self.symbols.initialize(name)
-                    item.expr_type = info.get("type")
+                    # Declarar implicitamente
+                    implicit_type = self.get_implicit_type(name)
+                    self.symbols.declare(name, implicit_type)
+                    info = self.symbols.lookup(name)
+                
+                self.symbols.initialize(name)
+                item.expr_type = info.get("type")
                 for expr in item.expressionList:
                     self.verify_expression(expr, lineno)
 
@@ -653,8 +661,10 @@ class SemanticParser:
                 name = expr.name
                 info = self.symbols.lookup(name)
                 if info is None:
-                    self.errors.add_error(f"Undeclared variable: '{name}'", current_lineno)
-                    return None
+                    # Declarar implicitamente se não existir (Regra I-N)
+                    implicit_type = self.get_implicit_type(name)
+                    self.symbols.declare(name, implicit_type)
+                    info = self.symbols.lookup(name)
                 
                 # Verificar se a variável foi inicializada (exceto se for argumento de função, mas por agora check básico)
                 if not info.get("initialized"):
