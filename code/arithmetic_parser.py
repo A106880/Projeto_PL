@@ -41,14 +41,13 @@ def p_ProgramUnit(p):
 
 # p1: Main -> Functions PROGRAM ID\n Declaritions LabeledStatements END\n Functions
 def p_main(p):
-    '''Main : PROGRAM ID NewLines Declarations LabeledStatements END OptNewLines'''
-    
+    '''Main : PROGRAM ID NewLines Declarations LabeledStatements END'''
     p[0] = MainProgram(
         name=p[2],
         declarations=p[4],
         labeled_statements=p[5]
     )
-    p[0].lineno = p.lineno(1) 
+    p[0].lineno = p.lineno(1)
 
 def p_newlines(p):
     '''NewLines : NEWLINE NewLines
@@ -62,10 +61,9 @@ def p_opt_newlines(p):
 
 # p2: FunctionDef -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n
 def p_functions(p):
-    '''FunctionDef : FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
+    '''FunctionDef : FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END'''
     p[0] = Function(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
     p[0].lineno = p.lineno(1)
-    
 # p4: FunctionType -> INTEGER
 # p5:     | REAL
 # p6:     | DOUBLE PRECISION
@@ -485,7 +483,7 @@ def p_expression_val(p):
 
 # Subroutine -> SUBROUTINE ID (ArgumentList)\n Declarations LabeledStatements END\n
 def p_Subroutine(p):
-    '''Subroutine :  SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
+    '''Subroutine :  SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END'''
     p[0] = Subroutine(p[2],p[4],p[7],p[8])
     p[0].lineno = p.lineno(1)
 

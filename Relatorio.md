@@ -102,9 +102,9 @@ As producoes contruidas foram as seguintes:
 **Estrutura do Programa**
 - `Program` → OptNewLines ProgramUnit Program | OptNewLines
 - `ProgramUnit` → FunctionDef | Main | Subroutine
-- `Main` → PROGRAM ID NewLines Declarations LabeledStatements END OptNewLines
-- `FunctionDef` → FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines
-- `Subroutine` → SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines
+- `Main` → PROGRAM ID NewLines Declarations LabeledStatements END
+- `FunctionDef` → FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END
+- `Subroutine` → SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END
 
 **Utilidades**
 - `NewLines` → NEWLINE NewLines | NEWLINE
