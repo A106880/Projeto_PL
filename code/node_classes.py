@@ -420,7 +420,7 @@ class BlockIf(Statement):
                 f"{print_indented_list('THEN', self.thenBody, indent+1)}\n"
                 f"{elseBodyText}{end_endif}")
 
-class Mod(Statement):
+class Mod(Expression):
     left: Expression
     right: Expression
 

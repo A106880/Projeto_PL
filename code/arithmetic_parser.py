@@ -420,20 +420,20 @@ def p_else_body(p):
         p[0].lineno = p.lineno(1)
 
 def p_print(p):
-    '''Print : PRINT Format
-             | PRINT Format ',' Dlist
-             | PRINT Format Dlist'''
+    '''Print : PRINT Format ',' Dlist
+             | PRINT Format'''
     if len(p) == 3:
         p[0] = Print(format=p[2], iolist=[])
-    elif len(p) == 5:
-        p[0] = Print(format=p[2], iolist=p[4])
     else:
-        p[0] = Print(format=p[2], iolist=p[3])
+        p[0] = Print(format=p[2], iolist=p[4])
     p[0].lineno = p.lineno(1)
 
 def p_format(p):
-    '''Format : '*'
-              | INTVAL'''
+    '''Format : '*' '''
+    p[0] = p[1]
+
+def p_uni(p):
+    '''Unit : '*' '''
     p[0] = p[1]
 
 def p_dlist(p):
@@ -545,9 +545,8 @@ def p_expression_list(p):
         p[0] = []
 
 def p_write(p):
-    '''Write : WRITE '(' Format ',' Format ')'
-             | WRITE '(' Format ',' Format ')' Dlist
-             | WRITE '(' Format ',' Format ')' ',' Dlist'''
+    '''Write : WRITE '(' Unit ',' Format ')'
+             | WRITE '(' Unit ',' Format ')' Dlist'''
     if len(p) == 7:
         p[0] = Write(unit=p[3], format=p[5], iolist=[])
     elif len(p) == 8:
@@ -559,10 +558,8 @@ def p_write(p):
 def p_read(p):
     '''Read : READ Format
             | READ Format ',' Dlist
-            | READ Format Dlist
-            | READ '(' Format ',' Format ')'
-            | READ '(' Format ',' Format ')' Dlist
-            | READ '(' Format ',' Format ')' ',' Dlist'''
+            | READ '(' Unit ',' Format ')'
+            | READ '(' Unit ',' Format ')' Dlist'''
     if len(p) == 3:
         p[0] = Read(format=p[2], iolist=[])
     elif len(p) == 5:

@@ -586,7 +586,7 @@ class SemanticParser:
                 return None
             return "LOGICAL"
 
-        elif op == 'CONCAT':
+        elif op == '//':
             if left_type != 'CHARACTER':
                 self.errors.add_error(f"Left operand of '//' must be CHARACTER, got {left_type}", lineno)
                 return None

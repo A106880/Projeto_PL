@@ -23,6 +23,13 @@ class CodeGenerator:
         self.semantic_info: Optional[Any] = None
         self._label_count: int = 0
 
+        # Alocar variáveis globais temporárias para a operação de Exponenciação (POWER)
+        self.add_global("__pow_base_i", "INTEGER")
+        self.add_global("__pow_exp_i", "INTEGER")
+        self.add_global("__pow_res_i", "INTEGER")
+        self.add_global("__pow_base_r", "REAL")
+        self.add_global("__pow_res_r", "REAL")
+
     def set_semantic_info(self, parser: Any) -> None:
         self.semantic_info = parser
 
@@ -191,6 +198,8 @@ class CodeGenerator:
                     self.instructions.append("WRITES")
                 elif t == "LOGICAL":
                     self.instructions.append("WRITEI") # Imprime 0 ou 1
+                elif t == "CHARACTER" or t == "HOLLERITH":
+                    self.instructions.append("WRITES")
                 else:
                     self.instructions.append("WRITEI")  # Fallback
         self.instructions.append("WRITELN")
@@ -218,6 +227,8 @@ class CodeGenerator:
                     self.instructions.append("WRITES")
                 elif t == "LOGICAL":
                     self.instructions.append("WRITEI")
+                elif t == "CHARACTER" or t == "HOLLERITH":
+                    self.instructions.append("WRITES")
                 else:
                     self.instructions.append("WRITEI")
         self.instructions.append("WRITELN")
@@ -495,6 +506,80 @@ class CodeGenerator:
             self.instructions.append("EQUAL")
             self.instructions.append("NOT")
         
+        elif op == '//':
+            self.instructions.append("CONCAT")
+        
+        elif op == '**' or op == 'POWER':
+            lbl_start = self.new_label("pow_start")
+            lbl_end = self.new_label("pow_end")
+            
+            if t == "INTEGER":
+                var_base = self.lookup("__pow_base_i")
+                var_exp = self.lookup("__pow_exp_i")
+                var_res = self.lookup("__pow_res_i")
+                
+                # Stack has Base, Exp.
+                self.instructions.append(f"STOREG {var_exp.offset}")
+                self.instructions.append(f"STOREG {var_base.offset}")
+                self.instructions.append("PUSHI 1")
+                self.instructions.append(f"STOREG {var_res.offset}")
+                
+                self.instructions.append(f"{lbl_start}:")
+                self.instructions.append(f"PUSHG {var_exp.offset}")
+                self.instructions.append("PUSHI 0")
+                self.instructions.append("SUP") # exp > 0
+                self.instructions.append(f"JZ {lbl_end}")
+                
+                self.instructions.append(f"PUSHG {var_res.offset}")
+                self.instructions.append(f"PUSHG {var_base.offset}")
+                self.instructions.append("MUL")
+                self.instructions.append(f"STOREG {var_res.offset}")
+                
+                self.instructions.append(f"PUSHG {var_exp.offset}")
+                self.instructions.append("PUSHI 1")
+                self.instructions.append("SUB")
+                self.instructions.append(f"STOREG {var_exp.offset}")
+                
+                self.instructions.append(f"JUMP {lbl_start}")
+                self.instructions.append(f"{lbl_end}:")
+                self.instructions.append(f"PUSHG {var_res.offset}")
+                
+            elif t == "REAL":
+                var_base = self.lookup("__pow_base_r")
+                var_exp = self.lookup("__pow_exp_i") 
+                var_res = self.lookup("__pow_res_r")
+                
+                # Stack has Base, Exp
+                if r_type == "REAL":
+                    self.instructions.append("FTOI") # Converter expoente para inteiro para o loop
+                
+                self.instructions.append(f"STOREG {var_exp.offset}")
+                self.instructions.append(f"STOREG {var_base.offset}")
+                self.instructions.append("PUSHF 1.0")
+                self.instructions.append(f"STOREG {var_res.offset}")
+                
+                self.instructions.append(f"{lbl_start}:")
+                self.instructions.append(f"PUSHG {var_exp.offset}")
+                self.instructions.append("PUSHI 0")
+                self.instructions.append("SUP")
+                self.instructions.append(f"JZ {lbl_end}")
+                
+                self.instructions.append(f"PUSHG {var_res.offset}")
+                self.instructions.append(f"PUSHG {var_base.offset}")
+                self.instructions.append("FMUL")
+                self.instructions.append(f"STOREG {var_res.offset}")
+                
+                self.instructions.append(f"PUSHG {var_exp.offset}")
+                self.instructions.append("PUSHI 1")
+                self.instructions.append("SUB")
+                self.instructions.append(f"STOREG {var_exp.offset}")
+                
+                self.instructions.append(f"JUMP {lbl_start}")
+                self.instructions.append(f"{lbl_end}:")
+                self.instructions.append(f"PUSHG {var_res.offset}")
+            else:
+                 self.instructions.append("ERR \"Exponentiation not supported for this type\"")
+        
         # Lógicos com Curto-circuito
         elif op == ".AND.":
             self._label_count += 1
@@ -765,7 +850,7 @@ class CodeGenerator:
         self.emit(f"JUMP {label}")
 
     def generate_ComputedGoto(self, node):
-        index = self.generate_expression(node.expr)
+        self.generate(node.expr)
         num_labels = len(node.labels)
         for idx, label in enumerate(node.labels, 1):
             self.emit("DUP 0")
@@ -773,20 +858,19 @@ class CodeGenerator:
             self.emit("EQUAL")
             next_label = self.new_label("after_case")
             self.emit(f"JZ {next_label}")
-            self.emit(f"JUMP label{label.value}")
+            self.emit(f"JUMP LABEL{label.value}")
             self.emit_label(next_label)
         self.emit("POP 1")
 
     def generate_AssignedGoto(self, node):
-        var = self.get_var_name(node.var)
-        self.generate_expression(node.var)
+        self.generate(node.var)
         for label in node.labels:
             self.emit("DUP 0")
             self.emit(f"PUSHI {label.value}")
             self.emit("EQUAL")
             next_label = self.new_label("AFTERCASE")
             self.emit(f"JZ {next_label}")
-            self.emit(f"JUMP label{label.value}")
+            self.emit(f"JUMP LABEL{label.value}")
             self.emit_label(next_label)
         self.emit("POP 1")
 
@@ -797,6 +881,8 @@ class CodeGenerator:
         end_label = self.new_label('doEnd')
         self.generate(node.init_value)
         var_obj = self.lookup(var)
+        prefix = "F" if var_obj.type in ("REAL", "DOUBLEPRECISION") else ""
+        
         if var_obj.scope == "GLOBAL":
             self.emit(f"STOREG {var_obj.offset}")
         else:
@@ -808,7 +894,7 @@ class CodeGenerator:
         else:
             self.emit(f"PUSHL {var_obj.offset}")
         self.generate(node.max_value)
-        self.emit("INFEQ")
+        self.emit(f"{prefix}INFEQ")
         self.emit(f"JZ {end_label}")
 
         for stmt in node.labeled_statements:
@@ -819,7 +905,7 @@ class CodeGenerator:
         else:
             self.emit(f"PUSHL {var_obj.offset}")
         self.generate(node.step)
-        self.emit("ADD")
+        self.emit(f"{prefix}ADD")
         if var_obj.scope == "GLOBAL":
             self.emit(f"STOREG {var_obj.offset}")
         else:
@@ -833,7 +919,8 @@ class CodeGenerator:
         var_obj = self.lookup(var)
         loop_start = self.new_label("loopStart")
         loop_end = self.new_label("loopEnd")
-        user_label = f"label{node.label.value}"
+        user_label = f"LABEL{node.label.value}"
+        prefix = "F" if var_obj.type in ("REAL", "DOUBLEPRECISION") else ""
 
         self.generate(node.control_var_init_value)
         if var_obj.scope == "GLOBAL":
@@ -847,7 +934,7 @@ class CodeGenerator:
         else:
             self.emit(f"PUSHL {var_obj.offset}")
         self.generate(node.iterations_number)
-        self.emit("INFEQ")
+        self.emit(f"{prefix}INFEQ")
         self.emit(f"JZ {loop_end}")
 
         for stmt in node.labeled_statements:
@@ -858,7 +945,7 @@ class CodeGenerator:
         else:
             self.emit(f"PUSHL {var_obj.offset}")
         self.generate(node.step)
-        self.emit("ADD")
+        self.emit(f"{prefix}ADD")
         if var_obj.scope == "GLOBAL":
             self.emit(f"STOREG {var_obj.offset}")
         else:
@@ -866,27 +953,41 @@ class CodeGenerator:
 
         self.emit(f"JUMP {loop_start}")
         self.emit_label(loop_end)
-        self.emit(f"JUMP {user_label}")
-
+        # Em Labeled DO, a última instrução do corpo pode ser o próprio user_label
+        # Se não for, saltamos para lá no fim do ciclo se for necessário (F77 semantics vary slightly but this is safe)
         self.emit_label(user_label) 
+
+    def generate_Continue(self, node: Any) -> None:
+        # Instrução CONTINUE em Fortran 77 não faz nada além de servir como alvo de Label
+        self.emit("NOP")
 
     def generate_ArithmeticIf(self, node):
         self.generate(node.exp)
-        self.emit("DUP 0")
-        self.emit("PUSHI 0")
-        self.emit("INF")
-        self.emit(f"JZ NEXT1{node.lineno}")
-        self.emit(f"JUMP label{node.labeln.value}")
+        t = getattr(node.exp, "expr_type", "INTEGER")
+        prefix = "F" if t in ("REAL", "DOUBLEPRECISION") else ""
+        zero_instr = "PUSHF 0.0" if prefix == "F" else "PUSHI 0"
+        
+        next1 = self.new_label("arith_next")
+        next2 = self.new_label("arith_next")
 
-        self.emit_label(f"NEXT1{node.lineno}")
         self.emit("DUP 0")
-        self.emit("PUSHI 0")
+        self.emit(zero_instr)
+        self.emit(f"{prefix}INF")
+        self.emit(f"JZ {next1}")
+        self.emit("POP 1") # Limpa o resultado da expressão da stack
+        self.emit(f"JUMP LABEL{node.labeln.value}")
+
+        self.emit_label(next1)
+        self.emit("DUP 0")
+        self.emit(zero_instr)
         self.emit("EQUAL")
-        self.emit(f"JZ NEXT2{node.lineno}")
-        self.emit(f"JUMP label{node.labelz.value}")
+        self.emit(f"JZ {next2}")
+        self.emit("POP 1") # Limpa
+        self.emit(f"JUMP LABEL{node.labelz.value}")
 
-        self.emit_label(f"NEXT2{node.lineno}")
-        self.emit(f"JUMP label    {node.labelp.value}")
+        self.emit_label(next2)
+        self.emit("POP 1") # Limpa
+        self.emit(f"JUMP LABEL{node.labelp.value}")
 
     def generate_LogicIf(self, node):
         endif_label = self.new_label("endif")

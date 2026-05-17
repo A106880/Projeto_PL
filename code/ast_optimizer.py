@@ -6,7 +6,8 @@ from node_classes import (
     Node, FunctionorArraysAccess, Call, Variable, Read, Declaration, ArrayId,
     IntVal, RealVal, MainProgram, Function, Subroutine,
     LabeledStatement, Assignment, Print, Write, BinOp, UnOp, Goto, Label,
-    Expression, Statement, Program_Unit, LogicalVal, Return
+    Expression, Statement, Program_Unit, LogicalVal, Return, Continue, Mod,
+    LogicIf, BlockIf, BlockDO, LabeledDO, ArithmeticIf,
 )
 from semantic_parser import get_name, SemanticParser
 
@@ -110,6 +111,8 @@ class ASTOptimizer:
             return None
         
         if isinstance(node, list):
+            if node and isinstance(node[0], LabeledStatement):
+                return self.optimize_statement_list(node)
             return [self.optimize_node(n) for n in node]
         
         class_name = type(node).__name__
@@ -121,25 +124,75 @@ class ASTOptimizer:
         else:
             if node is not None:
                 print(f"ERROR: Optimization not implemented for: {method_name}")
-                pass
             return node
             
     def optimize_MainProgram(self, node: MainProgram) -> MainProgram:
-        if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_node(node.labeled_statements)
+        if hasattr(node, 'labeled_statements') and node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
     def optimize_Function(self, node: Function) -> Function:
-        if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_node(node.labeled_statements)
+        if hasattr(node, 'labeled_statements') and node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
     def optimize_Subroutine(self, node: Subroutine) -> Subroutine:
-        if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_node(node.labeled_statements)
+        if hasattr(node, 'labeled_statements') and node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
+        return node
+
+    def optimize_LogicIf(self, node: LogicIf) -> LogicIf:
+        node.exp = self.optimize_node(node.exp)
+        node.statement = self.optimize_node(node.statement)
+        return node
+
+    def optimize_BlockIf(self, node: BlockIf) -> BlockIf:
+        node.exp = self.optimize_node(node.exp)
+        if node.thenBody:
+            node.thenBody = self.optimize_statement_list(node.thenBody)
+        if node.elseBody:
+            if isinstance(node.elseBody, list):
+                node.elseBody = self.optimize_statement_list(node.elseBody)
+            else:
+                node.elseBody = self.optimize_node(node.elseBody)
+        return node
+
+    def optimize_BlockDO(self, node: BlockDO) -> BlockDO:
+        node.init_value = self.optimize_node(node.init_value)
+        node.max_value = self.optimize_node(node.max_value)
+        node.step = self.optimize_node(node.step)
+        if node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
+        return node
+
+    def optimize_LabeledDO(self, node: LabeledDO) -> LabeledDO:
+        node.control_var_init_value = self.optimize_node(node.control_var_init_value)
+        node.iterations_number = self.optimize_node(node.iterations_number)
+        node.step = self.optimize_node(node.step)
+        if node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
+        return node
+
+    def optimize_ArithmeticIf(self, node: ArithmeticIf) -> ArithmeticIf:
+        node.exp = self.optimize_node(node.exp)
+        return node
+
+    def optimize_Call(self, node: Call) -> Call:
+        if node.arguments:
+            node.arguments = [self.optimize_node(arg) for arg in node.arguments]
+        return node
+
+    def optimize_FunctionorArraysAccess(self, node: FunctionorArraysAccess) -> FunctionorArraysAccess:
+        if node.expressionList:
+            node.expressionList = [self.optimize_node(expr) for expr in node.expressionList]
+        return node
+
+    def optimize_Read(self, node: Read) -> Read:
+        if node.iolist:
+            node.iolist = [self.optimize_node(item) for item in node.iolist]
         return node
 
     def _collect_used_vars(self, node: Union[Node, List[Node], None], used: set[str]) -> None:
@@ -351,7 +404,7 @@ class ASTOptimizer:
                 pass
         return node
 
-    def optimize_Mod(self, node: BinOp) -> Union[BinOp, IntVal]:
+    def optimize_Mod(self, node: Mod) -> Union[Mod, IntVal]:
         node.left = self.optimize_node(node.left)
         node.right = self.optimize_node(node.right)
 
