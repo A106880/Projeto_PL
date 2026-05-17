@@ -50,9 +50,16 @@ class SymbolTable:
                     global_type = info.get("type")
                     if global_type is None and var_type is not None:
                         info["type"] = var_type
-                        return True, ""
                     elif global_type is not None and var_type is not None and global_type != var_type:
                         return False, f"Conflicting type declaration for function: '{name}'"
+                    
+                    scope[name] = {
+                        "type": info.get("type") or var_type,
+                        "initialized": False,
+                        "is_function": True,
+                        "is_array": False,
+                        "params": info.get("params", []),
+                    }
                     return True, ""
                 elif info.get("is_subroutine"):
                     return False, f"Name '{name}' already used as a subroutine"
@@ -159,6 +166,9 @@ class SemanticParser:
         self._in_do_loop = False
         self.program_units = {}
         self.unit_symbols = {} # Guarda a tabela de símbolos de cada unidade
+        self.has_complex = False
+        self.has_power = False
+        self.max_literal_args = 0
         
     def get_implicit_type(self, name: str) -> str:
         if name and name[0].upper() in 'IJKLMN':
@@ -222,7 +232,7 @@ class SemanticParser:
         self.apply_implicit_typing() # Aplica regra I-N após declarações explícitas
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
-        self.collect_labeled_do_bodies(node.labeled_statements)
+        node.labeled_statements = self.collect_labeled_do_bodies(node.labeled_statements)
         self.check_labels()
         # Salvar tabela de símbolos da unidade
         unit_name = get_name(node.name) if node.name else "MAIN"
@@ -262,7 +272,7 @@ class SemanticParser:
 
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
-        self.collect_labeled_do_bodies(node.labeled_statements)
+        node.labeled_statements = self.collect_labeled_do_bodies(node.labeled_statements)
         self.check_labels()
 
         # Verificar se houve atribuição ao nome da função
@@ -310,6 +320,7 @@ class SemanticParser:
 
         self.labels = []
         self.process_labeled_statements(node.labeled_statements)
+        node.labeled_statements = self.collect_labeled_do_bodies(node.labeled_statements)
         self.check_labels()
 
         if subroutine_symbol:
@@ -481,6 +492,8 @@ class SemanticParser:
                     actual = len(node.expressionList)
                     if expected != actual:
                         self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {expected}, got {actual}", lineno)
+                    if len(node.expressionList) > self.max_literal_args:
+                        self.max_literal_args = len(node.expressionList)
                     
                     # Verificação de tipos dos argumentos
                     for i, expr in enumerate(node.expressionList):
@@ -515,6 +528,9 @@ class SemanticParser:
                 exprLis = len(node.expressionList)
                 self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {exp_len}, got {exprLis}", lineno)
             
+            if len(node.expressionList) > self.max_literal_args:
+                self.max_literal_args = len(node.expressionList)
+
             # Verificação de tipos dos argumentos
             func_unit = self.program_units.get(name)
             for i, expr in enumerate(node.expressionList):
@@ -569,6 +585,12 @@ class SemanticParser:
             self.errors.add_error(f"Right operand of '{op}' must doesn't have a type", lineno)
             return None
 
+        if left_type in ("COMPLEX", "DOUBLECOMPLEX") or right_type in ("COMPLEX", "DOUBLECOMPLEX"):
+            self.has_complex = True
+            
+        if op == '**':
+            self.has_power = True
+
         if op in self._arithmetic_ops:
             if left_type not in self._numeric_types:
                 self.errors.add_error(f"Left operand of '{op}' must be numeric, got {left_type}", lineno)
@@ -581,20 +603,6 @@ class SemanticParser:
                 if left_type != "INTEGER" or right_type != "INTEGER":
                     self.errors.add_error(f"Exponentiation (**) only supported for INTEGER**INTEGER, got {left_type}**{right_type}", lineno)
                     return None
-
-            # if op == '/':
-            #     if isinstance(node.right, IntVal) and node.right.value == 0:
-            #         self.errors.add_error("Division by zero", lineno)
-            #     elif isinstance(node.right, RealVal) and node.right.value == 0.0:
-            #         self.errors.add_error("Division by zero", lineno)
-
-            # if op == '**':
-            #     left_is_zero = (isinstance(node.left, IntVal) and node.left.value == 0) or \
-            #                    (isinstance(node.left, RealVal) and node.left.value == 0.0)
-            #     right_is_neg = (isinstance(node.right, IntVal) and node.right.value < 0) or \
-            #                    (isinstance(node.right, RealVal) and node.right.value < 0.0)
-            #     if left_is_zero and right_is_neg:
-            #         self.errors.add_error("Zero raised to a negative power", lineno)
 
             if left_type == right_type:
                 return left_type
@@ -745,6 +753,10 @@ class SemanticParser:
     def verify_Call(self, node: Call) -> None:
         call_statement = node
         sub_name = get_name(call_statement.subroutine)
+        
+        if len(call_statement.arguments) > self.max_literal_args:
+            self.max_literal_args = len(call_statement.arguments)
+
         if sub_name in self.program_units:
             subroutine = self.program_units[sub_name]
             if not isinstance(subroutine, Subroutine):
@@ -842,31 +854,48 @@ class SemanticParser:
                 self._used_labels.append(label)
     
 
-    def collect_labeled_do_bodies(self, labeled_statements):
-        i = 0
-        n = len(labeled_statements)
+    def collect_labeled_do_bodies(self, statements: List[LabeledStatement]) -> List[LabeledStatement]:
+        if not statements:
+            return statements
+
         result = []
-        while i < n:
-            stmt = labeled_statements[i]
-            if isinstance(stmt.statement, LabeledDO) and stmt.statement.labeled_statements is None:
-                loop = stmt.statement
-                loop_body = []
-                i += 1
-                while i < n:
-                    next_stmt = labeled_statements[i]
-                    if (next_stmt.label is not None
-                        and next_stmt.label.value == loop.label.value):
+        i = 0
+        while i < len(statements):
+            stmt = statements[i]
+            if isinstance(stmt.statement, LabeledDO):
+                do_node = stmt.statement
+                target_label = get_name(do_node.label)
+                
+                body = []
+                j = i + 1
+                found = False
+                while j < len(statements):
+                    curr = statements[j]
+                    body.append(curr)
+                    if curr.label and get_name(curr.label) == target_label:
+                        found = True
                         break
-                    loop_body.append(next_stmt)
+                    j += 1
+                
+                if not found:
+                    self.errors.add_error(f"Target label {target_label} for DO loop not found.", stmt.lineno)
+                    result.append(stmt)
                     i += 1
-                loop.labeled_statements = loop_body
+                    continue
+                
+                do_node.labeled_statements = self.collect_labeled_do_bodies(body)
+                
+                # Remove a label da última instrução do corpo do loop apenas se for a label do DO
+                last_stmt = do_node.labeled_statements[-1]
+                if last_stmt.label and get_name(last_stmt.label) == target_label:
+                    last_stmt.label = None
+
                 result.append(stmt)
-                if i < n:
-                    result.append(labeled_statements[i])
-                i += 1
+                i = j + 1
             else:
                 result.append(stmt)
                 i += 1
+
         return result
 
     def verify_LabeledDO(self, node):

@@ -112,7 +112,6 @@ def preprocess_fortran(source):
             lines[i] = ''
     source = '\n'.join(lines)
     
-    # Normalizar palavras-chave com espaços
     source = re.sub(r'(?i)DOUBLE\s+PRECISION', 'DOUBLEPRECISION', source)
     source = re.sub(r'(?i)DOUBLE\s+COMPLEX', 'DOUBLECOMPLEX', source)
     source = re.sub(r'(?i)END\s+IF', 'ENDIF', source)

@@ -535,7 +535,7 @@ class Variable(Node):
         space = '  '*indent
         return f"{space}Variable({self.name})"
 
-class IntVal(Node):
+class IntVal(Expression):
     value: int
 
     def __init__(self, value: int):
@@ -547,7 +547,7 @@ class IntVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}IntVal({self.value})"
 
-class RealVal(Node):
+class RealVal(Expression):
     value: float
 
     def __init__(self, value: float):
@@ -559,7 +559,7 @@ class RealVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}RealVal({self.value})"
 
-class DoublePrecisionVal(Node):
+class DoublePrecisionVal(Expression):
     value: float
 
     def __init__(self, value: float):
@@ -571,7 +571,7 @@ class DoublePrecisionVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}DoublePrecisionVal({self.value})"
 
-class StringVal(Node):
+class StringVal(Expression):
     value: str
 
     def __init__(self, value: str):
@@ -583,7 +583,7 @@ class StringVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}StringVal('{self.value}')"
 
-class LogicalVal(Node):
+class LogicalVal(Expression):
     value: bool
 
     def __init__(self, value: bool):

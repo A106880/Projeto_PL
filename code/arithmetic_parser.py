@@ -26,10 +26,10 @@ precedence = (
 #Program -> ProgramUnit Program |
 #               Vazio
 def p_Program(p):
-    '''Program : ProgramUnit OptNewLines Program
-               | empty'''
+    '''Program : OptNewLines ProgramUnit Program
+               | OptNewLines'''
     if len(p) == 4:
-        p[0] = [p[1]] + p[3]
+        p[0] = [p[2]] + p[3]
     else:
         p[0] = []
 
@@ -413,7 +413,7 @@ def p_else_block(p):
 #p:           | IF (Expression) THEN NewLines LabeledStatements ElseBlock
 def p_else_body(p):
     '''ElseBody : NewLines LabeledStatements
-                | IF '(' Expression ')' THEN NewLines LabeledStatements ElseBlock ENDIF'''
+                | IF '(' Expression ')' THEN NewLines LabeledStatements ElseBlock'''
     if (len(p) == 3):
         p[0] = p[2]
         if p[0]:
@@ -518,12 +518,18 @@ def p_label(p):
     p[0].lineno = p.lineno(1)
 
 def p_function_or_arrays_access(p):
-    '''FunctionorArraysAccess : ID '(' Expression ExpressionList ')'  '''
-    p[0] = FunctionorArraysAccess(p[1], [p[3]] + p[4])
+    '''FunctionorArraysAccess : ID '(' Expression ExpressionList ')'
+                              | ID '(' ')' '''
+    if len(p) == 6:
+        p[0] = FunctionorArraysAccess(p[1], [p[3]] + p[4])
+    else:
+        p[0] = FunctionorArraysAccess(p[1], [])
+    
     line = p.lineno(1)
-    line = p[1].lineno if hasattr(p[1], 'lineno') else line
-    line = p[3].lineno if hasattr(p[3], 'lineno') else line
-    line = p[4].lineno if hasattr(p[4], 'lineno') else line
+    if len(p) == 6:
+        line = p[1].lineno if hasattr(p[1], 'lineno') else line
+        line = p[3].lineno if hasattr(p[3], 'lineno') else line
+        line = p[4].lineno if hasattr(p[4], 'lineno') else line
     p[0].lineno = line
 
 

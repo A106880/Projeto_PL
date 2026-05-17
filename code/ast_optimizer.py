@@ -224,8 +224,7 @@ class ASTOptimizer:
 
         if isinstance(node, FunctionorArraysAccess):
             name = get_name(node.name)
-            if getattr(node, 'is_array', False):
-                used.add(name)
+            used.add(name)
             for expr in node.expressionList:
                 self._collect_used_vars(expr, used)
             return
@@ -559,6 +558,9 @@ class ASTOptimizer:
 
 
 
+
+    def optimize_Goto(self, node: Goto) -> Goto:
+        return node
 
     def optimize_IntVal(self, node: IntVal) -> IntVal:
         return node
