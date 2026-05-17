@@ -297,6 +297,7 @@ class SemanticParser:
                 self.symbols.initialize(name) # Argumentos inicializados pela chamada
 
         self.process_declarations(node.declarations)
+        self.apply_implicit_typing() # Aplica regra I-N após declarações explícitas
 
         global_scope = self.symbols._scopes[0]
         subroutine_symbol = global_scope.get(subroutine_name)
@@ -703,16 +704,39 @@ class SemanticParser:
         # print("\n\n",self.program_units.keys())
 
     def verify_Call(self, node: Call) -> None:
-            call_statement = node
-            sub_name = get_name(call_statement.subroutine)
-            if sub_name in self.program_units:
-                subroutine = self.program_units[sub_name]
-                if not isinstance(subroutine, Subroutine):
-                    self.errors.add_error(f"{sub_name} is not a subroutine", call_statement.lineno)
-                elif len(call_statement.arguments) != len(subroutine.arguments):
-                    expected_args = len(subroutine.arguments)
-                    actual_args = len(call_statement.arguments)
-                    self.errors.add_error(f"Wrong number of arguments calling SUBROUTINE {sub_name}; expected {expected_args}, got {actual_args}", call_statement.lineno)
+        call_statement = node
+        sub_name = get_name(call_statement.subroutine)
+        if sub_name in self.program_units:
+            subroutine = self.program_units[sub_name]
+            if not isinstance(subroutine, Subroutine):
+                self.errors.add_error(f"{sub_name} is not a subroutine", call_statement.lineno)
+                return
+            
+            expected_args = subroutine.arguments
+            actual_args = call_statement.arguments
+            
+            if len(actual_args) != len(expected_args):
+                self.errors.add_error(f"Wrong number of arguments calling SUBROUTINE {sub_name}; expected {len(expected_args)}, got {len(actual_args)}", call_statement.lineno)
+            
+            # Verificação de tipos dos argumentos
+            for i, expr in enumerate(actual_args):
+                expr_type = self.verify_expression(expr, call_statement.lineno)
+                if i < len(expected_args):
+                    arg_name = get_name(expected_args[i])
+                    # Procurar tipo na declaração da subrotina chamada
+                    expected_type = None
+                    for decl in subroutine.declarations:
+                        for decl_id in decl.Ids:
+                            if get_name(decl_id.name) == arg_name:
+                                expected_type = get_name(decl.tipo)
+                                break
+                        if expected_type:
+                            break
+                    
+                    if expr_type and expected_type and expr_type != expected_type:
+                        self.errors.add_error(f"Type mismatch for argument {i+1} of subroutine {sub_name}: expected {expected_type}, got {expr_type}", call_statement.lineno)
+        else:
+            self.errors.add_error(f"Undeclared subroutine: {sub_name}", node.lineno)
 
 
     def verify_Mod(self, node: Mod) -> Optional[str]:
