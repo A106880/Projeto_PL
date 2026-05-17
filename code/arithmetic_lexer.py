@@ -15,7 +15,8 @@ tokens = (
     'CHARACTER', 'CHARACTERVAL', 'HOLLERITH', 'HOLLERITHVAL', 'PRINT', 'READ', 
     'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 'SUBROUTINE', 'CALL',
     'POWER', 'CONCAT', 'AND', 'OR', 'NOT', 'EQ', 'NE', 'LT', 'LE', 'GT', 'GE',
-    'RETURN'
+    'EQV', 'NEQV',
+    'RETURN', 'ENDDO'
 )
 
 reserved = {
@@ -43,17 +44,16 @@ reserved = {
     'CONTINUE': 'CONTINUE',
     'SUBROUTINE': 'SUBROUTINE',
     'CALL': 'CALL',
-    'RETURN': 'RETURN'
+    'RETURN': 'RETURN',
+    'ENDDO': 'ENDDO'
 }
 
 
 def t_HOLLERITHVAL(t):
-    r'\d+[Hh]\w+'
-    match = re.match(r'(\d+)[Hh](.*)', t.value)
-    if match:
-        n = int(match.group(1))
-        text = match.group(2)[:n]
-        t.value = text
+    r'\d+[Hh]'
+    n = int(t.value[:-1])
+    t.value = t.lexer.lexdata[t.lexer.lexpos : t.lexer.lexpos + n]
+    t.lexer.lexpos += n
     t.lineno = t.lexer.lineno
     return t
 
@@ -110,7 +110,15 @@ def preprocess_fortran(source):
     for i, line in enumerate(lines):
         if line and line[0] in ('C', 'c', '*'):
             lines[i] = ''
-    return '\n'.join(lines)
+    source = '\n'.join(lines)
+    
+    source = re.sub(r'(?i)DOUBLE\s+PRECISION', 'DOUBLEPRECISION', source)
+    source = re.sub(r'(?i)DOUBLE\s+COMPLEX', 'DOUBLECOMPLEX', source)
+    source = re.sub(r'(?i)END\s+IF', 'ENDIF', source)
+    source = re.sub(r'(?i)GO\s+TO', 'GOTO', source)
+    source = re.sub(r'(?i)END\s+DO', 'ENDDO', source)
+    
+    return source
 
 
 def t_COMMENT(t):
@@ -146,6 +154,18 @@ def t_AND(t):
 def t_OR(t):
     r'\.or\.|\.OR\.'
     t.type = reserved.get(t.value.upper(),'OR')
+    return t
+
+
+def t_EQV(t):
+    r'\.EQV\.|\.eqv\.'
+    t.type = reserved.get(t.value.upper(), 'EQV')
+    return t
+
+
+def t_NEQV(t):
+    r'\.NEQV\.|\.neqv\.'
+    t.type = reserved.get(t.value.upper(), 'NEQV')
     return t
 
 
@@ -191,8 +211,14 @@ def t_GE(t):
     return t
 
 
+def find_column(input, token):
+    line_start = input.rfind('\n', 0, token.lexpos) + 1
+    return (token.lexpos - line_start) + 1
+
+
 def t_error(t):
-    raise LexError(f"Illegal character {t.value[0]}")
+    col = find_column(t.lexer.lexdata, t)
+    raise LexError(f"Illegal character '{t.value[0]}' at line {t.lineno}, column {col}")
 
 
 lexer = lex.lex()

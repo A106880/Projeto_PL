@@ -70,11 +70,13 @@ if __name__ == "__main__":
             generator.generate_Program_Unit(ast)
             assembly_code = generator.get_assembly()
             
-            with open("../assembly.vm", "w", newline='\n') as f:
+            output_filename = filename.rsplit('.', 1)[0].split('/')[-1] + ".vm"
+
+            with open(f"{output_filename}", "w", newline='\n') as f:
                 f.write(assembly_code)
                 
-            print("Machine code generated successfully!")
-            print(assembly_code)
+            print(f"Machine code generated successfully in {output_filename}!")
+            # print(assembly_code)
         else:
             print("\nCode Generation skipped due to errors.")
         print("\n")

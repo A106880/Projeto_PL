@@ -5,11 +5,13 @@ from node_classes import (
     Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO,
     ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label,
     FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal,
+    DoublePrecisionVal,
 )
 from arithmetic_lexer import tokens
 
 
 precedence = (
+    ('left', 'EQV', 'NEQV'),   # .EQV., .NEQV. (Lowest)
     ('left', 'OR'),            # .OR.
     ('left', 'AND'),           # .AND.
     ('right', 'NOT'),          # .NOT.
@@ -17,8 +19,8 @@ precedence = (
     ('left', 'CONCAT'),        # //
     ('left', '+', '-'),        # Adição e Subtração
     ('left', '*', '/'),        # Multiplicação e Divisão
-    ('right', 'POWER'),        # ** (Exponenciação)
     ('right', 'UMINUS'),       # Operador Unário (Negativo)
+    ('right', 'POWER'),        # ** (Exponenciação)
 )
 
 #Program -> ProgramUnit Program |
@@ -41,14 +43,13 @@ def p_ProgramUnit(p):
 
 # p1: Main -> Functions PROGRAM ID\n Declaritions LabeledStatements END\n Functions
 def p_main(p):
-    '''Main : PROGRAM ID NewLines Declarations LabeledStatements END OptNewLines'''
-    
+    '''Main : PROGRAM ID NewLines Declarations LabeledStatements OptNewLines END'''
     p[0] = MainProgram(
         name=p[2],
         declarations=p[4],
         labeled_statements=p[5]
     )
-    p[0].lineno = p.lineno(1) 
+    p[0].lineno = p.lineno(1)
 
 def p_newlines(p):
     '''NewLines : NEWLINE NewLines
@@ -62,10 +63,9 @@ def p_opt_newlines(p):
 
 # p2: FunctionDef -> FunctionType FUNCTION ID (ArgumentList)\n Declaritions LabeledStatements END\n
 def p_functions(p):
-    '''FunctionDef : FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
+    '''FunctionDef : FunctionType FUNCTION ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END'''
     p[0] = Function(return_type=p[1], name=p[3], arguments=p[5], declarations=p[8], labeled_statements=p[9])
     p[0].lineno = p.lineno(1)
-    
 # p4: FunctionType -> INTEGER
 # p5:     | REAL
 # p6:     | DOUBLE PRECISION
@@ -131,6 +131,8 @@ def p_val(p):
         p[0] = LogicalVal(p[1])
     elif isinstance(p[1], int):
         p[0] = IntVal(p[1])
+    elif p.slice[1].type == 'DOUBLEPRECISIONVAL':
+        p[0] = DoublePrecisionVal(p[1])
     elif isinstance(p[1], float):
         p[0] = RealVal(p[1])
     elif isinstance(p[1], str):
@@ -361,7 +363,7 @@ def p_labeledDo(p):
     p[0].lineno = p.lineno(1)
 
 def p_block_do(p):
-    '''Do : DO ID '=' Expression ',' Expression Step NewLines LabeledStatements END DO'''
+    '''Do : DO ID '=' Expression ',' Expression Step NewLines LabeledStatements ENDDO'''
     if p[7] is not None:
         p[0] = BlockDO(p[2], p[4], p[6], p[9], step = p[7])
     else:
@@ -411,7 +413,7 @@ def p_else_block(p):
 #p:           | IF (Expression) THEN NewLines LabeledStatements ElseBlock
 def p_else_body(p):
     '''ElseBody : NewLines LabeledStatements
-                | IF '(' Expression ')' THEN NewLines LabeledStatements ElseBlock ENDIF'''
+                | IF '(' Expression ')' THEN NewLines LabeledStatements ElseBlock'''
     if (len(p) == 3):
         p[0] = p[2]
         if p[0]:
@@ -421,26 +423,29 @@ def p_else_body(p):
         p[0].lineno = p.lineno(1)
 
 def p_print(p):
-    '''Print : PRINT Format Iolist'''
-    print = Print(
-        format=p[2],
-        iolist=p[3]
-    )
-    p[0] = print
+    '''Print : PRINT Format ',' Dlist
+             | PRINT Format'''
+    if len(p) == 3:
+        p[0] = Print(format=p[2], iolist=[])
+    else:
+        p[0] = Print(format=p[2], iolist=p[4])
     p[0].lineno = p.lineno(1)
 
 def p_format(p):
-    '''Format : '*'
-              | INTVAL'''
+    '''Format : '*' '''
     p[0] = p[1]
 
-def p_iolist(p):
-    '''Iolist : ',' Expression Iolist
-              | empty'''
-    if len(p)>2:
-        p[0] = [p[2]]+p[3]
+def p_uni(p):
+    '''Unit : '*' '''
+    p[0] = p[1]
+
+def p_dlist(p):
+    '''Dlist : Expression
+             | Expression ',' Dlist'''
+    if len(p) == 2:
+        p[0] = [p[1]]
     else:
-        p[0] = []
+        p[0] = [p[1]] + p[3]
 
 def p_expression_binop(p):
     '''Expression : Expression '+' Expression
@@ -456,7 +461,9 @@ def p_expression_binop(p):
                   | Expression GT Expression
                   | Expression GE Expression
                   | Expression AND Expression
-                  | Expression OR Expression'''
+                  | Expression OR Expression
+                  | Expression EQV Expression
+                  | Expression NEQV Expression'''
     p[0] = BinOp(left=p[1], op=p[2], right=p[3])
     p[0].lineno = p.lineno(1)
 
@@ -485,14 +492,22 @@ def p_expression_val(p):
 
 # Subroutine -> SUBROUTINE ID (ArgumentList)\n Declarations LabeledStatements END\n
 def p_Subroutine(p):
-    '''Subroutine :  SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements END OptNewLines'''
-    p[0] = Subroutine(p[2],p[4],p[7],p[8])
+    '''Subroutine :  SUBROUTINE ID '(' ArgumentList ')' NewLines Declarations LabeledStatements OptNewLines END
+                  |  SUBROUTINE ID NewLines Declarations LabeledStatements OptNewLines END'''
+    if len(p) == 11:
+        p[0] = Subroutine(p[2],p[4],p[7],p[8])
+    else:
+        p[0] = Subroutine(p[2],[],p[4],p[5])
     p[0].lineno = p.lineno(1)
 
 #Call -> CALL ID (ArgumentList)
 def p_Call(p):
-    '''Call : CALL ID '(' ExpressionListStart ')' '''
-    p[0] = Call(p[2], p[4])
+    '''Call : CALL ID '(' ExpressionListStart ')'
+            | CALL ID'''
+    if len(p) > 3:
+        p[0] = Call(p[2], p[4])
+    else:
+        p[0] = Call(p[2], [])
     p[0].lineno = p.lineno(1)
 
 
@@ -503,12 +518,18 @@ def p_label(p):
     p[0].lineno = p.lineno(1)
 
 def p_function_or_arrays_access(p):
-    '''FunctionorArraysAccess : ID '(' Expression ExpressionList ')'  '''
-    p[0] = FunctionorArraysAccess(p[1], [p[3]] + p[4])
+    '''FunctionorArraysAccess : ID '(' Expression ExpressionList ')'
+                              | ID '(' ')' '''
+    if len(p) == 6:
+        p[0] = FunctionorArraysAccess(p[1], [p[3]] + p[4])
+    else:
+        p[0] = FunctionorArraysAccess(p[1], [])
+    
     line = p.lineno(1)
-    line = p[1].lineno if hasattr(p[1], 'lineno') else line
-    line = p[3].lineno if hasattr(p[3], 'lineno') else line
-    line = p[4].lineno if hasattr(p[4], 'lineno') else line
+    if len(p) == 6:
+        line = p[1].lineno if hasattr(p[1], 'lineno') else line
+        line = p[3].lineno if hasattr(p[3], 'lineno') else line
+        line = p[4].lineno if hasattr(p[4], 'lineno') else line
     p[0].lineno = line
 
 
@@ -533,13 +554,33 @@ def p_expression_list(p):
         p[0] = []
 
 def p_write(p):
-    '''Write : WRITE '(' Format ',' Format ')' Iolist'''
-    p[0] = Write(unit=p[3], format=p[5], iolist=p[7])
+    '''Write : WRITE '(' Unit ',' Format ')'
+             | WRITE '(' Unit ',' Format ')' Dlist'''
+    if len(p) == 7:
+        p[0] = Write(unit=p[3], format=p[5], iolist=[])
+    elif len(p) == 8:
+        p[0] = Write(unit=p[3], format=p[5], iolist=p[7])
+    else:
+        p[0] = Write(unit=p[3], format=p[5], iolist=p[8])
     p[0].lineno = p.lineno(1)
 
 def p_read(p):
-    '''Read : READ Format Iolist'''
-    p[0] = Read(format=p[2], iolist=p[3])
+    '''Read : READ Format
+            | READ Format ',' Dlist
+            | READ '(' Unit ',' Format ')'
+            | READ '(' Unit ',' Format ')' Dlist'''
+    if len(p) == 3:
+        p[0] = Read(format=p[2], iolist=[])
+    elif len(p) == 5:
+        p[0] = Read(format=p[2], iolist=p[4])
+    elif len(p) == 4:
+        p[0] = Read(format=p[2], iolist=p[3])
+    elif len(p) == 7:
+        p[0] = Read(format=p[5], iolist=[])
+    elif len(p) == 8:
+        p[0] = Read(format=p[5], iolist=p[7])
+    else:
+        p[0] = Read(format=p[5], iolist=p[8])
     p[0].lineno = p.lineno(1)
 
 def p_error(p):

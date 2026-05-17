@@ -130,20 +130,13 @@ class MainProgram(Program_Unit):
     
 class Function(Program_Unit):
     arguments: List[Union[Variable, str]]
-    return_type: str
+    return_type: Optional[str]
 
     def __init__(self, return_type:Optional[str], name:str, arguments:List[Union[Variable, str]]
         ,declarations:List[Declaration], labeled_statements:List[LabeledStatement]):
         super().__init__(name,declarations,labeled_statements)
         self.arguments = arguments
-        if return_type is None:
-            n_name = name if isinstance(name, str) else str(name)
-            if n_name.startswith(('N', 'I')):
-                self.return_type = "INTEGER"
-            else:
-                self.return_type = "REAL"
-        else:
-            self.return_type = return_type
+        self.return_type = return_type
 
     def __repr__(self) -> str:
         return self.repr(0)
@@ -427,7 +420,7 @@ class BlockIf(Statement):
                 f"{print_indented_list('THEN', self.thenBody, indent+1)}\n"
                 f"{elseBodyText}{end_endif}")
 
-class Mod(Statement):
+class Mod(Expression):
     left: Expression
     right: Expression
 
@@ -542,7 +535,7 @@ class Variable(Node):
         space = '  '*indent
         return f"{space}Variable({self.name})"
 
-class IntVal(Node):
+class IntVal(Expression):
     value: int
 
     def __init__(self, value: int):
@@ -554,7 +547,7 @@ class IntVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}IntVal({self.value})"
 
-class RealVal(Node):
+class RealVal(Expression):
     value: float
 
     def __init__(self, value: float):
@@ -566,7 +559,19 @@ class RealVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}RealVal({self.value})"
 
-class StringVal(Node):
+class DoublePrecisionVal(Expression):
+    value: float
+
+    def __init__(self, value: float):
+        super().__init__()
+        self.value = value
+
+    def __repr__(self) -> str: return self.repr(0)
+
+    def repr(self, indent=0) -> str:
+        return f"{'  '*indent}DoublePrecisionVal({self.value})"
+
+class StringVal(Expression):
     value: str
 
     def __init__(self, value: str):
@@ -578,7 +583,7 @@ class StringVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}StringVal('{self.value}')"
 
-class LogicalVal(Node):
+class LogicalVal(Expression):
     value: bool
 
     def __init__(self, value: bool):
@@ -609,7 +614,6 @@ class LabeledDO(Statement):
         return self.repr(0)
 
     def repr(self, indent = 0):
-        space = '  '*indent
         return (f"DO {self.label} (INIT = {self.control_var} = {self.control_var_init_value}, LIMIT = {self.iterations_number}, STEP = {self.step})"
                 # f"  LabeledStatements: {self.labeled_statements}\n"
                 # f"{self.label} END DO"

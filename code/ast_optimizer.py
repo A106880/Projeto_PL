@@ -6,7 +6,9 @@ from node_classes import (
     Node, FunctionorArraysAccess, Call, Variable, Read, Declaration, ArrayId,
     IntVal, RealVal, MainProgram, Function, Subroutine,
     LabeledStatement, Assignment, Print, Write, BinOp, UnOp, Goto, Label,
-    Expression, Statement, Program_Unit, LogicalVal, Return
+    Expression, Statement, Program_Unit, LogicalVal, Return, Continue, Mod,
+    LogicIf, BlockIf, BlockDO, LabeledDO, ArithmeticIf, ComputedGoto, AssignedGoto,
+    StringVal, DoublePrecisionVal
 )
 from semantic_parser import get_name, SemanticParser
 
@@ -27,11 +29,14 @@ class ASTOptimizer:
                 if isinstance(unit, MainProgram):
                     main_unit = unit
                 uname = get_name(unit.name) if getattr(unit, 'name', None) is not None else None
-                units_by_name[uname] = unit
+                if uname is not None:
+                    units_by_name[uname] = unit
 
             if main_unit is None:
                 for i, unit in enumerate(ast):
-                    ast[i] = self.optimize_node(unit)
+                    optimized_unit = self.optimize_node(unit)
+                    if isinstance(optimized_unit, Program_Unit):
+                        ast[i] = optimized_unit
                 return ast
 
             reachable: set[str] = set()
@@ -77,7 +82,9 @@ class ASTOptimizer:
             ast[:] = new_ast
 
             for i, unit in enumerate(ast):
-                ast[i] = self.optimize_node(unit)
+                optimized_unit = self.optimize_node(unit)
+                if isinstance(optimized_unit, Program_Unit):
+                    ast[i] = optimized_unit
         return ast
 
     def _collect_called_units_from_node(self, node: Union[Node, List[Node], None], called_set: set[str]) -> None:
@@ -110,7 +117,18 @@ class ASTOptimizer:
             return None
         
         if isinstance(node, list):
-            return [self.optimize_node(n) for n in node]
+            if node and isinstance(node[0], LabeledStatement):
+                return self.optimize_statement_list(node)
+            result: List[Node] = []
+            for n in node:
+                optimized = self.optimize_node(n)
+                if isinstance(optimized, list):
+                    result.extend(optimized)
+                elif optimized is None:
+                    continue
+                else:
+                    result.append(optimized)
+            return result
         
         class_name = type(node).__name__
         method_name = f"optimize_{class_name}"
@@ -121,25 +139,75 @@ class ASTOptimizer:
         else:
             if node is not None:
                 print(f"ERROR: Optimization not implemented for: {method_name}")
-                pass
             return node
             
     def optimize_MainProgram(self, node: MainProgram) -> MainProgram:
-        if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_node(node.labeled_statements)
+        if hasattr(node, 'labeled_statements') and node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
     def optimize_Function(self, node: Function) -> Function:
-        if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_node(node.labeled_statements)
+        if hasattr(node, 'labeled_statements') and node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
         return node
 
     def optimize_Subroutine(self, node: Subroutine) -> Subroutine:
-        if hasattr(node, 'labeled_statements'):
-            node.labeled_statements = self.optimize_node(node.labeled_statements)
+        if hasattr(node, 'labeled_statements') and node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
         self._remove_unused_declarations(node)
+        return node
+
+    def optimize_LogicIf(self, node: LogicIf) -> LogicIf:
+        node.exp = self.optimize_node(node.exp)
+        node.statement = self.optimize_node(node.statement)
+        return node
+
+    def optimize_BlockIf(self, node: BlockIf) -> BlockIf:
+        node.exp = self.optimize_node(node.exp)
+        if node.thenBody:
+            node.thenBody = self.optimize_statement_list(node.thenBody)
+        if node.elseBody:
+            if isinstance(node.elseBody, list):
+                node.elseBody = self.optimize_statement_list(node.elseBody)
+            else:
+                node.elseBody = self.optimize_node(node.elseBody)
+        return node
+
+    def optimize_BlockDO(self, node: BlockDO) -> BlockDO:
+        node.init_value = self.optimize_node(node.init_value)
+        node.max_value = self.optimize_node(node.max_value)
+        node.step = self.optimize_node(node.step)
+        if node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
+        return node
+
+    def optimize_LabeledDO(self, node: LabeledDO) -> LabeledDO:
+        node.control_var_init_value = self.optimize_node(node.control_var_init_value)
+        node.iterations_number = self.optimize_node(node.iterations_number)
+        node.step = self.optimize_node(node.step)
+        if node.labeled_statements:
+            node.labeled_statements = self.optimize_statement_list(node.labeled_statements)
+        return node
+
+    def optimize_ArithmeticIf(self, node: ArithmeticIf) -> ArithmeticIf:
+        node.exp = self.optimize_node(node.exp)
+        return node
+
+    def optimize_Call(self, node: Call) -> Call:
+        if node.arguments:
+            node.arguments = [self.optimize_node(arg) for arg in node.arguments]
+        return node
+
+    def optimize_FunctionorArraysAccess(self, node: FunctionorArraysAccess) -> FunctionorArraysAccess:
+        if node.expressionList:
+            node.expressionList = [self.optimize_node(expr) for expr in node.expressionList]
+        return node
+
+    def optimize_Read(self, node: Read) -> Read:
+        if node.iolist:
+            node.iolist = [self.optimize_node(item) for item in node.iolist]
         return node
 
     def _collect_used_vars(self, node: Union[Node, List[Node], None], used: set[str]) -> None:
@@ -156,8 +224,7 @@ class ASTOptimizer:
 
         if isinstance(node, FunctionorArraysAccess):
             name = get_name(node.name)
-            if getattr(node, 'is_array', False):
-                used.add(name)
+            used.add(name)
             for expr in node.expressionList:
                 self._collect_used_vars(expr, used)
             return
@@ -235,11 +302,10 @@ class ASTOptimizer:
             node.iolist = [self.optimize_node(e) for e in node.iolist]
         return node
 
-    def optimize_BinOp(self, node: BinOp) -> Union[BinOp, IntVal, RealVal]:
+    def optimize_BinOp(self, node: BinOp) -> Union[BinOp, IntVal, RealVal, LogicalVal]:
         node.left = self.optimize_node(node.left)
         node.right = self.optimize_node(node.right)
         
-        # Otimização de Constantes Lógicas
         if getattr(node, 'expr_type', None) == "LOGICAL":
             if node.op == ".AND.":
                 if isinstance(node.left, LogicalVal):
@@ -261,11 +327,31 @@ class ASTOptimizer:
                         return LogicalVal(True)
                     return node.left
 
-        if isinstance(node.left, (IntVal, RealVal)) and isinstance(node.right, (IntVal, RealVal)):
+        if isinstance(node.left, (IntVal, RealVal, DoublePrecisionVal)) and isinstance(node.right, (IntVal, RealVal, DoublePrecisionVal)):
             op = node.op
             v1 = node.left.value
             v2 = node.right.value
             
+            if op in ('.EQ.', '.NE.', '.LT.', '.LE.', '.GT.', '.GE.'):
+                res_bool = False
+                if op == '.EQ.':
+                    res_bool = (v1 == v2)
+                elif op == '.NE.':
+                    res_bool = (v1 != v2)
+                elif op == '.LT.':
+                    res_bool = (v1 < v2)
+                elif op == '.LE.':
+                    res_bool = (v1 <= v2)
+                elif op == '.GT.':
+                    res_bool = (v1 > v2)
+                elif op == '.GE.':
+                    res_bool = (v1 >= v2)
+                
+                self.optimized_nodes += 1
+                new_node = LogicalVal(res_bool)
+                new_node.lineno = node.lineno
+                return new_node
+
             try:
                 res: Optional[Union[int, float]] = None
                 if op == '+':
@@ -278,13 +364,13 @@ class ASTOptimizer:
                     if v2 == 0:
                         if self.semantic_info is not None:
                             original_right = node.right
-                            already_literal_zero = isinstance(original_right, (IntVal, RealVal)) and original_right.value == 0
+                            already_literal_zero = isinstance(original_right, (IntVal, RealVal, DoublePrecisionVal)) and original_right.value == 0
                             if already_literal_zero:
                                 lineno = getattr(node, 'lineno', None)
                                 self.semantic_info.errors.add_error("Division by zero detected", lineno)
                         return node
                     if type(node.left) is IntVal and type(node.right) is IntVal:
-                        res = v1 // v2
+                        res = int(v1 / v2)
                     else:
                         res = v1 / v2
                 elif op == '**':
@@ -292,8 +378,8 @@ class ASTOptimizer:
                         if self.semantic_info is not None:
                             original_left = node.left
                             original_right = node.right
-                            already_literal = (isinstance(original_left, (IntVal, RealVal)) and original_left.value == 0) and \
-                                              (isinstance(original_right, (IntVal, RealVal)) and original_right.value < 0)
+                            already_literal = (isinstance(original_left, (IntVal, RealVal, DoublePrecisionVal)) and original_left.value == 0) and \
+                                              (isinstance(original_right, (IntVal, RealVal, DoublePrecisionVal)) and original_right.value < 0)
                             if already_literal:
                                 lineno = getattr(node, 'lineno', None)
                                 self.semantic_info.errors.add_error("Zero raised to a negative power", lineno)
@@ -304,6 +390,8 @@ class ASTOptimizer:
                     self.optimized_nodes += 1
                     if isinstance(res, int) or (type(node.left) is IntVal and type(node.right) is IntVal and op != '/'):
                         new_node = IntVal(int(res))
+                    elif type(node.left) is DoublePrecisionVal or type(node.right) is DoublePrecisionVal:
+                        new_node = DoublePrecisionVal(float(res))
                     else:
                         new_node = RealVal(float(res))
                     
@@ -323,10 +411,16 @@ class ASTOptimizer:
                 pass
         return node
 
-    def optimize_UnOp(self, node: UnOp) -> Union[UnOp, IntVal, RealVal]:
+    def optimize_UnOp(self, node: UnOp) -> Union[UnOp, IntVal, RealVal, LogicalVal]:
         node.expr = self.optimize_node(node.expr)
         
-        if type(node.expr) in (IntVal, RealVal):
+        if node.op == '.NOT.' and isinstance(node.expr, LogicalVal):
+            self.optimized_nodes += 1
+            new_node = LogicalVal(not node.expr.value)
+            new_node.lineno = node.lineno
+            return new_node
+
+        if type(node.expr) in (IntVal, RealVal, DoublePrecisionVal):
             op = node.op
             v = node.expr.value
             try:
@@ -340,6 +434,8 @@ class ASTOptimizer:
                     self.optimized_nodes += 1
                     if isinstance(res, int) or type(node.expr) is IntVal:
                         new_node = IntVal(int(res))
+                    elif type(node.expr) is DoublePrecisionVal:
+                        new_node = DoublePrecisionVal(float(res))
                     else:
                         new_node = RealVal(float(res))
                     
@@ -351,7 +447,7 @@ class ASTOptimizer:
                 pass
         return node
 
-    def optimize_Mod(self, node: BinOp) -> Union[BinOp, IntVal]:
+    def optimize_Mod(self, node: Mod) -> Union[Mod, IntVal]:
         node.left = self.optimize_node(node.left)
         node.right = self.optimize_node(node.right)
 
@@ -383,7 +479,7 @@ class ASTOptimizer:
                 self.optimized_nodes += 1
                 new_node = IntVal(int(res))
                 if hasattr(node, 'expr_type'):
-                    new_node.expr_type = node.expr_type
+                    setattr(new_node, 'expr_type', node.expr_type)
                 new_node.lineno = node.lineno
                 return new_node
             except ZeroDivisionError:
@@ -410,6 +506,8 @@ class ASTOptimizer:
                     continue
                     
             optimized_item = self.optimize_node(item)
+            if not isinstance(optimized_item, LabeledStatement):
+                continue
             new_list.append(optimized_item)
             
             stmt = getattr(optimized_item, 'statement', None)
@@ -426,16 +524,19 @@ class ASTOptimizer:
         replacements: dict[str, Label] = {}
         for lbl, stmt in label_targets.items():
             if type(stmt).__name__ == 'Goto':
-                target_lbl = get_name(stmt.label)
+                target = getattr(stmt, 'label', None)
+                if target is None:
+                    continue
+                target_lbl = get_name(target)
                 if target_lbl != lbl:
-                    replacements[lbl] = stmt.label 
+                    replacements[lbl] = target
 
         if replacements:
             self._apply_goto_replacements(new_list, replacements)
         
         return new_list
 
-    def _apply_goto_replacements(self, nodes: List[LabeledStatement], replacements: dict[str, Label]) -> None:
+    def _apply_goto_replacements(self, nodes: List[Node], replacements: dict[str, Label]) -> None:
         for node in nodes:
             if isinstance(node, LabeledStatement):
                 stmt = getattr(node, 'statement', None)
@@ -444,3 +545,52 @@ class ASTOptimizer:
                     if lbl_val in replacements:
                         stmt.label = replacements[lbl_val]
                         self.optimized_nodes += 1
+
+    def optimize_ComputedGoto(self, node: ComputedGoto) -> ComputedGoto:
+        optimized_expr = self.optimize_node(node.expr)
+        if isinstance(optimized_expr, Expression):
+            node.expr = optimized_expr
+        return node
+
+    def optimize_AssignedGoto(self, node: AssignedGoto) -> AssignedGoto:
+        node.var = self.optimize_node(node.var)
+        return node
+
+
+
+
+    def optimize_Goto(self, node: Goto) -> Goto:
+        return node
+
+    def optimize_IntVal(self, node: IntVal) -> IntVal:
+        return node
+
+    def optimize_RealVal(self, node: RealVal) -> RealVal:
+        return node
+
+    def optimize_DoublePrecisionVal(self, node: DoublePrecisionVal) -> DoublePrecisionVal:
+        return node
+
+    def optimize_StringVal(self, node: StringVal) -> StringVal:
+        return node
+
+    def optimize_LogicalVal(self, node: LogicalVal) -> LogicalVal:
+        return node
+
+    def optimize_Variable(self, node: Variable) -> Variable:
+        return node
+
+    def optimize_Label(self, node: Label) -> Label:
+        return node
+
+    def optimize_Return(self, node: Return) -> Return:
+        return node
+
+    def optimize_Continue(self, node: Continue) -> Continue:
+        return node
+
+    def optimize_Declaration(self, node: Declaration) -> Declaration:
+        return node
+
+    def optimize_ArrayId(self, node: ArrayId) -> ArrayId:
+        return node
