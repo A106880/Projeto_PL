@@ -274,5 +274,10 @@ Para validar as funcionalidades do compilador, foi desenvolvida uma suite de tes
 3.  **`test_subprograms.f77`**: Valida a definição e chamada de `FUNCTION` e `SUBROUTINE`, focando na passagem de argumentos por referência e no retorno de valores complexos.
 4.  **`test_optimizations.f77`**: Desenhado especificamente para validar a fase de otimização, contendo expressões constantes para *folding*, código inalcançável para eliminação e variáveis declaradas mas não usadas para geração de avisos.
 
+## Aspetos a melhorar
+Apesar do sucesso na implementação dos requisitos base, existem várias áreas onde o compilador poderia ser melhorado ou expandido:
+Atualmente estamos com duas falhas, uma delas em que ao ser dada uma lista de elementos para escrever no ecrã, atualmente nao existe uma separacao entre as duas e a outra em que a tipagem implicita de números reais está a definir o valor da variavel como zero.
+Uma futura expansão seria a adição de suporte a contant folding para números complexos e também a realização de operações mais compplexas envolvendo a exponenciação de numeros reais em todos os tipos
+
 ## Conclusão
 Em conclusão, o compilador cumpre e excede os requisitos base, oferecendo um sistema robusto de análise e otimização que garante a geração de código eficiente e seguro para a máquina virtual alvo. A modularidade da implementação permite que o compilador seja facilmente estendido para suportar mais características do standard Fortran.

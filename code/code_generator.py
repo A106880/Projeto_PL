@@ -1077,7 +1077,7 @@ class CodeGenerator:
     def generate_ComputedGoto(self, node:ComputedGoto) -> None:
         self.generate(node.expr)
         for idx, label in enumerate(node.labels, 1):
-            self.emit("DUP 0")
+            self.emit("DUP 1")
             self.emit(f"PUSHI {idx}")
             self.emit("EQUAL")
             next_label = self.new_label("afterCase")
@@ -1093,7 +1093,7 @@ class CodeGenerator:
             self.emit("POP 1")
             return
         for label in node.labels:
-            self.emit("DUP 0")
+            self.emit("DUP 1")
             self.emit(f"PUSHI {label.value}")
             self.emit("EQUAL")
             next_label = self.new_label("AfterCase")
@@ -1199,7 +1199,7 @@ class CodeGenerator:
         next1 = self.new_label("arithNext")
         next2 = self.new_label("arithNext")
 
-        self.emit("DUP 0")
+        self.emit("DUP 1")
         self.emit(zero_instr)
         self.emit(f"{prefix}INF")
         self.emit(f"JZ {next1}")
@@ -1207,7 +1207,7 @@ class CodeGenerator:
         self.emit(f"JUMP {self.get_full_label(node.labeln.value)}")
 
         self.emit_label(next1)
-        self.emit("DUP 0")
+        self.emit("DUP 1")
         self.emit(zero_instr)
         self.emit("EQUAL")
         self.emit(f"JZ {next2}")

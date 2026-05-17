@@ -1,4 +1,14 @@
       PROGRAM TESTCONTROL
+C     Output Esperado:
+C     Computed GOTO: Saltou para 20
+C     Arithmetic IF: == 0
+C     DO Labeled:
+C     K = 1
+C     K = 2
+C     K = 3
+C     DO Block:
+C     J = 1
+C     J = 2
       INTEGER I, J, K
       
       I = 2

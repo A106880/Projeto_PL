@@ -1,4 +1,7 @@
       PROGRAM TESTSUB
+C     Output Esperado:
+C     Subrotina recebeu: 5 10
+C     Resultado Funcao ADD: 15
       INTEGER A, B, RES, ADD
       A = 5
       B = 10

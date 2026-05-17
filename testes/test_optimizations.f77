@@ -1,4 +1,7 @@
       PROGRAM TESTOPT
+C     Output Esperado:
+C     Constant Folding (10 + 20 * 2 = 50): 50
+C     Short-circuit OR funciona
       INTEGER X, Y, Z, UNUSED
       X = 10 + 20 * 2
       PRINT *, 'Constant Folding (10 + 20 * 2 = 50): ', X

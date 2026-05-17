@@ -1,4 +1,8 @@
       PROGRAM TESTTYPES
+C     Output Esperado:
+C     Soma Complexa: (4.0, 6.0)
+C     Double Precision: 123.456 456.789
+C     Tipificacao Implicita (I, R): 10 20.5
       COMPLEX C1, C2, C3
       DOUBLE PRECISION DP1, DP2
       INTEGER I
