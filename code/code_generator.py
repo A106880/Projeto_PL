@@ -74,13 +74,13 @@ class CodeGenerator:
         if var is None:
             print("DEBUG: _emit_store called with None")
             return
-        self.instructions.append(f"STORE{'G' if var.scope == 'GLOBAL' else 'L'} {var.offset}")
+        self.emit(f"STORE{'G' if var.scope == 'GLOBAL' else 'L'} {var.offset}")
 
     def _emit_push(self, var: Optional[EnvVar]) -> None:
         if var is None:
             print("DEBUG: _emit_push called with None")
             return
-        self.instructions.append(f"PUSH{'G' if var.scope == 'GLOBAL' else 'L'} {var.offset}")
+        self.emit(f"PUSH{'G' if var.scope == 'GLOBAL' else 'L'} {var.offset}")
 
     def _generate_array_addr(self, node: FunctionorArraysAccess) -> None:
         node_name = getattr(node, "name", None)
@@ -94,21 +94,21 @@ class CodeGenerator:
             return
 
         # 1. Endereço base
-        self.instructions.append("PUSHGP" if var.scope == "GLOBAL" else "PUSHFP")
-        self.instructions.append(f"PUSHI {var.offset}")
-        self.instructions.append("PADD")
+        self.emit("PUSHGP" if var.scope == "GLOBAL" else "PUSHFP")
+        self.emit(f"PUSHI {var.offset}")
+        self.emit("PADD")
 
         # 2. Offset (Índice - 1)
         self.generate(node.expressionList[0])
-        self.instructions.append("PUSHI 1")
-        self.instructions.append("SUB")
+        self.emit("PUSHI 1")
+        self.emit("SUB")
         
         # 3. Escalar se for complexo (2 slots por elemento)
         if var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
-            self.instructions.append("PUSHI 2")
-            self.instructions.append("MUL")
+            self.emit("PUSHI 2")
+            self.emit("MUL")
         
-        self.instructions.append("PADD")
+        self.emit("PADD")
 
     def _collect_literals(self, node: Any) -> None:
         if node is None:
@@ -212,47 +212,47 @@ class CodeGenerator:
 
         # 3. Alocar Globais na Stack
         if self.gp_offset > 0:
-            self.instructions.append(f"PUSHN {self.gp_offset}")
+            self.emit(f"PUSHN {self.gp_offset}")
 
         # 4. Definir FP para o início do Activation Record do Main
-        self.instructions.append("START")
+        self.emit("START")
 
         # 5. Inicializar Variáveis de Literais
         for var, lit_node in self._literals.values():
             if isinstance(lit_node, (ComplexVal, DoublePrecisionComplexVal, DoublePrecisionVal)):
                 if isinstance(lit_node, DoublePrecisionVal):
-                    self.instructions.append(f"PUSHF {lit_node.value}")
-                    self.instructions.append(f"STOREG {var.offset}")
-                    self.instructions.append(f"PUSHF 0.0")
-                    self.instructions.append(f"STOREG {var.offset + 1}")
+                    self.emit(f"PUSHF {lit_node.value}")
+                    self.emit(f"STOREG {var.offset}")
+                    self.emit(f"PUSHF 0.0")
+                    self.emit(f"STOREG {var.offset + 1}")
                 else:
-                    self.instructions.append(f"PUSHF {lit_node.elem1.value}")
-                    self.instructions.append(f"STOREG {var.offset}")
-                    self.instructions.append(f"PUSHF {lit_node.elem2.value}")
-                    self.instructions.append(f"STOREG {var.offset + 1}")
+                    self.emit(f"PUSHF {lit_node.elem1.value}")
+                    self.emit(f"STOREG {var.offset}")
+                    self.emit(f"PUSHF {lit_node.elem2.value}")
+                    self.emit(f"STOREG {var.offset + 1}")
             elif isinstance(lit_node, RealVal):
-                self.instructions.append(f"PUSHF {lit_node.value}")
-                self.instructions.append(f"STOREG {var.offset}")
+                self.emit(f"PUSHF {lit_node.value}")
+                self.emit(f"STOREG {var.offset}")
             elif isinstance(lit_node, StringVal):
-                self.instructions.append(f'PUSHS "{lit_node.value}"')
-                self.instructions.append(f"STOREG {var.offset}")
+                self.emit(f'PUSHS "{lit_node.value}"')
+                self.emit(f"STOREG {var.offset}")
             elif isinstance(lit_node, LogicalVal):
                 val = 1 if lit_node.value else 0
-                self.instructions.append(f"PUSHI {val}")
-                self.instructions.append(f"STOREG {var.offset}")
+                self.emit(f"PUSHI {val}")
+                self.emit(f"STOREG {var.offset}")
             else: # IntVal
-                self.instructions.append(f"PUSHI {lit_node.value}")
-                self.instructions.append(f"STOREG {var.offset}")
+                self.emit(f"PUSHI {lit_node.value}")
+                self.emit(f"STOREG {var.offset}")
 
         self.fp_offset = 0
         self.locals = {} # Limpar locals para o Main
         self._setup_scratch_vars()
         num_locals = self.fp_offset
         if num_locals > 0:
-            self.instructions.append(f"PUSHN {num_locals}")
+            self.emit(f"PUSHN {num_locals}")
 
         self.generate(node.labeled_statements)
-        self.instructions.append("STOP")
+        self.emit("STOP")
 
     def generate_LabeledStatement(self, node: Any) -> None:
         if node.label:
@@ -274,29 +274,29 @@ class CodeGenerator:
                 # 2. Gerar o valor a ser guardado
                 is_2slot_arr = var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION")
                 if is_2slot_arr:
-                    self.instructions.append("DUP 1")
+                    self.emit("DUP 1")
                 
                 self.generate(node.value)
                 val_type = getattr(node.value, "expr_type", "INTEGER")
 
                 # Conversão implícita
                 if var.type in ("REAL", "DOUBLEPRECISION") and val_type == "INTEGER":
-                    self.instructions.append("ITOF")
+                    self.emit("ITOF")
                     if var.type == "DOUBLEPRECISION":
-                        self.instructions.append("PUSHF 0.0")
+                        self.emit("PUSHF 0.0")
                 elif var.type == "INTEGER" and val_type in ("REAL", "DOUBLEPRECISION"):
                     if val_type == "DOUBLEPRECISION":
-                        self.instructions.append("POP 1")
-                    self.instructions.append("FTOI")
+                        self.emit("POP 1")
+                    self.emit("FTOI")
 
                 if is_2slot_arr and val_type not in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
-                    self.instructions.append("PUSHF 0.0")
+                    self.emit("PUSHF 0.0")
                 
                 if is_2slot_arr:
-                    self.instructions.append("STORE 1")
-                    self.instructions.append("STORE 0")
+                    self.emit("STORE 1")
+                    self.emit("STORE 0")
                 else:
-                    self.instructions.append("STORE 0")
+                    self.emit("STORE 0")
             return
 
         # Atribuição normal a variável
@@ -307,44 +307,44 @@ class CodeGenerator:
             
             # Conversão implícita
             if var.type in ("REAL", "DOUBLEPRECISION") and val_type == "INTEGER":
-                self.instructions.append("ITOF")
+                self.emit("ITOF")
                 if var.type == "DOUBLEPRECISION":
-                    self.instructions.append("PUSHF 0.0")
+                    self.emit("PUSHF 0.0")
             elif var.type == "INTEGER" and val_type in ("REAL", "DOUBLEPRECISION"):
                 if val_type == "DOUBLEPRECISION":
-                    self.instructions.append("POP 1")
-                self.instructions.append("FTOI")
+                    self.emit("POP 1")
+                self.emit("FTOI")
 
             is_2slot = var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION")
             if is_2slot and val_type not in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
-                self.instructions.append("PUSHF 0.0")
+                self.emit("PUSHF 0.0")
             
             if var.is_ref:
                 if is_2slot:
-                    self.instructions.append(f"PUSHL {var.offset}") # Endereço base
-                    self.instructions.append("PUSHI 1")
-                    self.instructions.append("PADD")
-                    self.instructions.append("SWAP")
-                    self.instructions.append("STORE 0") # Guarda Parte 2 em Addr+1
-                    self.instructions.append(f"PUSHL {var.offset}")
-                    self.instructions.append("SWAP")
-                    self.instructions.append("STORE 0") # Guarda Parte 1 em Addr
+                    self.emit(f"PUSHL {var.offset}") # Endereço base
+                    self.emit("PUSHI 1")
+                    self.emit("PADD")
+                    self.emit("SWAP")
+                    self.emit("STORE 0") # Guarda Parte 2 em Addr+1
+                    self.emit(f"PUSHL {var.offset}")
+                    self.emit("SWAP")
+                    self.emit("STORE 0") # Guarda Parte 1 em Addr
                 else:
-                    self.instructions.append(f"PUSHL {var.offset}")
-                    self.instructions.append("SWAP")
-                    self.instructions.append("STORE 0")
+                    self.emit(f"PUSHL {var.offset}")
+                    self.emit("SWAP")
+                    self.emit("STORE 0")
             elif var.scope == "GLOBAL":
                 if is_2slot:
-                    self.instructions.append(f"STOREG {var.offset + 1}")
-                    self.instructions.append(f"STOREG {var.offset}")
+                    self.emit(f"STOREG {var.offset + 1}")
+                    self.emit(f"STOREG {var.offset}")
                 else:
-                    self.instructions.append(f"STOREG {var.offset}")
+                    self.emit(f"STOREG {var.offset}")
             else:
                 if is_2slot:
-                    self.instructions.append(f"STOREL {var.offset + 1}")
-                    self.instructions.append(f"STOREL {var.offset}")
+                    self.emit(f"STOREL {var.offset + 1}")
+                    self.emit(f"STOREL {var.offset}")
                 else:
-                    self.instructions.append(f"STOREL {var.offset}")
+                    self.emit(f"STOREL {var.offset}")
         else:
             print(f"DEBUG: Variable {var_name} not found in environment!")
 
@@ -354,32 +354,32 @@ class CodeGenerator:
                 self.generate(item)
                 t = getattr(item, "expr_type", "INTEGER")
                 if isinstance(item, StringVal):
-                    self.instructions.append("WRITES")
+                    self.emit("WRITES")
                 elif t == "INTEGER":
-                    self.instructions.append("WRITEI")
+                    self.emit("WRITEI")
                 elif t == "REAL":
-                    self.instructions.append("WRITEF")
+                    self.emit("WRITEF")
                 elif t in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
                     if t == "DOUBLEPRECISION":
-                        self.instructions.append("WRITEF")
-                        self.instructions.append("WRITEF")
+                        self.emit("WRITEF")
+                        self.emit("WRITEF")
                     else:
-                        self.instructions.append('PUSHS "("')
-                        self.instructions.append("WRITES")
-                        self.instructions.append("SWAP") 
-                        self.instructions.append("WRITEF")
-                        self.instructions.append('PUSHS ", "')
-                        self.instructions.append("WRITES")
-                        self.instructions.append("WRITEF")
-                        self.instructions.append('PUSHS ")"')
-                        self.instructions.append("WRITES")
+                        self.emit('PUSHS "("')
+                        self.emit("WRITES")
+                        self.emit("SWAP") 
+                        self.emit("WRITEF")
+                        self.emit('PUSHS ", "')
+                        self.emit("WRITES")
+                        self.emit("WRITEF")
+                        self.emit('PUSHS ")"')
+                        self.emit("WRITES")
                 elif t == "LOGICAL":
-                    self.instructions.append("WRITEI")
+                    self.emit("WRITEI")
                 elif t == "CHARACTER" or t == "HOLLERITH":
-                    self.instructions.append("WRITES")
+                    self.emit("WRITES")
                 else:
-                    self.instructions.append("WRITEI")
-        self.instructions.append("WRITELN")
+                    self.emit("WRITEI")
+        self.emit("WRITELN")
 
     def generate_Write(self, node: Any) -> None:
         if node.iolist:
@@ -387,32 +387,32 @@ class CodeGenerator:
                 self.generate(item)
                 t = getattr(item, "expr_type", "INTEGER")
                 if isinstance(item, StringVal):
-                    self.instructions.append("WRITES")
+                    self.emit("WRITES")
                 elif t == "INTEGER":
-                    self.instructions.append("WRITEI")
+                    self.emit("WRITEI")
                 elif t == "REAL":
-                    self.instructions.append("WRITEF")
+                    self.emit("WRITEF")
                 elif t in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
                     if t == "DOUBLEPRECISION":
-                        self.instructions.append("WRITEF")
-                        self.instructions.append("WRITEF")
+                        self.emit("WRITEF")
+                        self.emit("WRITEF")
                     else:
-                        self.instructions.append('PUSHS "("')
-                        self.instructions.append("WRITES")
-                        self.instructions.append("SWAP") 
-                        self.instructions.append("WRITEF")
-                        self.instructions.append('PUSHS ", "')
-                        self.instructions.append("WRITES")
-                        self.instructions.append("WRITEF")
-                        self.instructions.append('PUSHS ")"')
-                        self.instructions.append("WRITES")
+                        self.emit('PUSHS "("')
+                        self.emit("WRITES")
+                        self.emit("SWAP") 
+                        self.emit("WRITEF")
+                        self.emit('PUSHS ", "')
+                        self.emit("WRITES")
+                        self.emit("WRITEF")
+                        self.emit('PUSHS ")"')
+                        self.emit("WRITES")
                 elif t == "LOGICAL":
-                    self.instructions.append("WRITEI")
+                    self.emit("WRITEI")
                 elif t == "CHARACTER" or t == "HOLLERITH":
-                    self.instructions.append("WRITES")
+                    self.emit("WRITES")
                 else:
-                    self.instructions.append("WRITEI")
-        self.instructions.append("WRITELN")
+                    self.emit("WRITEI")
+        self.emit("WRITELN")
 
     def generate_Read(self, node: Any) -> None:
         if node.iolist:
@@ -425,16 +425,16 @@ class CodeGenerator:
                     var_name = item.name
                     var = self.lookup(var_name)
                     if var:
-                        self.instructions.append("READ")
+                        self.emit("READ")
                         if t == "INTEGER":
-                            self.instructions.append("ATOI")
+                            self.emit("ATOI")
                         elif t == "REAL":
-                            self.instructions.append("ATOF")
+                            self.emit("ATOF")
                         
                         if var.scope == "GLOBAL":
-                            self.instructions.append(f"STOREG {var.offset}")
+                            self.emit(f"STOREG {var.offset}")
                         else:
-                            self.instructions.append(f"STOREL {var.offset}")
+                            self.emit(f"STOREL {var.offset}")
                 
                 elif isinstance(item, FunctionorArraysAccess):
                     name_attr = getattr(item, "name", None)
@@ -445,24 +445,24 @@ class CodeGenerator:
                         self._generate_array_addr(item)
                         
                         # Ler e converter
-                        self.instructions.append("READ")
+                        self.emit("READ")
                         if t == "INTEGER":
-                            self.instructions.append("ATOI")
+                            self.emit("ATOI")
                         elif t == "REAL":
-                            self.instructions.append("ATOF")
+                            self.emit("ATOF")
                         
                         # Guardar no endereço que está na stack
-                        self.instructions.append("STORE 0")
+                        self.emit("STORE 0")
 
     def generate_IntVal(self, node: Any) -> None:
-        self.instructions.append(f"PUSHI {node.value}")
+        self.emit(f"PUSHI {node.value}")
 
     def generate_RealVal(self, node: Any) -> None:
-        self.instructions.append(f"PUSHF {node.value}")
+        self.emit(f"PUSHF {node.value}")
 
     def generate_DoublePrecisionVal(self, node: Any) -> None:
-        self.instructions.append(f"PUSHF {node.value}")
-        self.instructions.append("PUSHF 0.0")
+        self.emit(f"PUSHF {node.value}")
+        self.emit("PUSHF 0.0")
 
     def generate_ComplexVal(self, node: Any) -> None:
         self.generate(node.elem1)
@@ -472,32 +472,32 @@ class CodeGenerator:
         self.generate_ComplexVal(node)
 
     def generate_StringVal(self, node: Any) -> None:
-        self.instructions.append(f'PUSHS "{node.value}"')
+        self.emit(f'PUSHS "{node.value}"')
 
     def generate_LogicalVal(self, node: Any) -> None:
         val = 1 if node.value else 0
-        self.instructions.append(f"PUSHI {val}")
+        self.emit(f"PUSHI {val}")
 
     def generate_Variable(self, node: Any) -> None:
         var = self.lookup(node.name)
         if var:
             is_2slot = var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION")
             if var.is_ref:
-                self.instructions.append(f"PUSHL {var.offset}")
-                self.instructions.append("LOAD 0")
+                self.emit(f"PUSHL {var.offset}")
+                self.emit("LOAD 0")
                 if is_2slot:
-                    self.instructions.append(f"PUSHL {var.offset}")
-                    self.instructions.append("PUSHI 1")
-                    self.instructions.append("PADD")
-                    self.instructions.append("LOAD 0")
+                    self.emit(f"PUSHL {var.offset}")
+                    self.emit("PUSHI 1")
+                    self.emit("PADD")
+                    self.emit("LOAD 0")
             elif var.scope == "GLOBAL":
-                self.instructions.append(f"PUSHG {var.offset}")
+                self.emit(f"PUSHG {var.offset}")
                 if is_2slot:
-                    self.instructions.append(f"PUSHG {var.offset + 1}")
+                    self.emit(f"PUSHG {var.offset + 1}")
             else:
-                self.instructions.append(f"PUSHL {var.offset}")
+                self.emit(f"PUSHL {var.offset}")
                 if is_2slot:
-                    self.instructions.append(f"PUSHL {var.offset + 1}")
+                    self.emit(f"PUSHL {var.offset + 1}")
 
     def generate_BinOp(self, node: Any) -> None:
         op = node.op
@@ -511,16 +511,16 @@ class CodeGenerator:
         
         self.generate(node.left)
         if is_any_complex and l_type not in complex_types:
-            self.instructions.append("PUSHF 0.0")
+            self.emit("PUSHF 0.0")
         elif is_any_float and l_type == "INTEGER":
-            self.instructions.append("ITOF")
+            self.emit("ITOF")
             
         if op not in (".AND.", ".OR."):
             self.generate(node.right)
             if is_any_complex and r_type not in complex_types:
-                self.instructions.append("PUSHF 0.0")
+                self.emit("PUSHF 0.0")
             elif is_any_float and r_type == "INTEGER":
-                self.instructions.append("ITOF")
+                self.emit("ITOF")
 
         if t in complex_types:
             r1_var = self.lookup("__comp_r1")
@@ -540,12 +540,12 @@ class CodeGenerator:
                 # Real: R1 +/- R2
                 self._emit_push(r1_var)
                 self._emit_push(r2_var)
-                self.instructions.append(f"{prefix}{'ADD' if op == '+' else 'SUB'}")
+                self.emit(f"{prefix}{'ADD' if op == '+' else 'SUB'}")
                 
                 # Imag: I1 +/- I2
                 self._emit_push(i1_var)
                 self._emit_push(i2_var)
-                self.instructions.append(f"{prefix}{'ADD' if op == '+' else 'SUB'}")
+                self.emit(f"{prefix}{'ADD' if op == '+' else 'SUB'}")
                 return
             
             elif op == "*":
@@ -558,20 +558,20 @@ class CodeGenerator:
                 # Real: R1*R2 - I1*I2
                 self._emit_push(r1_var)
                 self._emit_push(r2_var)
-                self.instructions.append("FMUL")
+                self.emit("FMUL")
                 self._emit_push(i1_var)
                 self._emit_push(i2_var)
-                self.instructions.append("FMUL")
-                self.instructions.append("FSUB")
+                self.emit("FMUL")
+                self.emit("FSUB")
                 
                 # Imag: R1*I2 + I1*R2
                 self._emit_push(r1_var)
                 self._emit_push(i2_var)
-                self.instructions.append("FMUL")
+                self.emit("FMUL")
                 self._emit_push(i1_var)
                 self._emit_push(r2_var)
-                self.instructions.append("FMUL")
-                self.instructions.append("FADD")
+                self.emit("FMUL")
+                self.emit("FADD")
                 return
 
             elif op == "/":
@@ -584,47 +584,47 @@ class CodeGenerator:
                 # 1. Calcular Denominador D = c^2 + d^2
                 self._emit_push(r2_var)
                 self._emit_push(r2_var)
-                self.instructions.append("FMUL")
+                self.emit("FMUL")
                 self._emit_push(i2_var)
                 self._emit_push(i2_var)
-                self.instructions.append("FMUL")
-                self.instructions.append("FADD")
+                self.emit("FMUL")
+                self.emit("FADD")
                 self._emit_store(temp_var)
 
                 # 2. Parte Real: (ac + bd) / D
                 self._emit_push(r1_var)
                 self._emit_push(r2_var)
-                self.instructions.append("FMUL")
+                self.emit("FMUL")
                 self._emit_push(i1_var)
                 self._emit_push(i2_var)
-                self.instructions.append("FMUL")
-                self.instructions.append("FADD")
+                self.emit("FMUL")
+                self.emit("FADD")
                 self._emit_push(temp_var)
-                self.instructions.append("FDIV")
+                self.emit("FDIV")
 
                 # 3. Parte Imag: (bc - ad) / D
                 self._emit_push(i1_var)
                 self._emit_push(r2_var)
-                self.instructions.append("FMUL")
+                self.emit("FMUL")
                 self._emit_push(r1_var)
                 self._emit_push(i2_var)
-                self.instructions.append("FMUL")
-                self.instructions.append("FSUB")
+                self.emit("FMUL")
+                self.emit("FSUB")
                 self._emit_push(temp_var)
-                self.instructions.append("FDIV")
+                self.emit("FDIV")
                 return
 
         # Determinar prefixo
         prefix = "F" if (l_type in ("REAL", "DOUBLEPRECISION") or r_type in ("REAL", "DOUBLEPRECISION")) else ""
         
         if op == "+":
-            self.instructions.append(f"{prefix}ADD")
+            self.emit(f"{prefix}ADD")
         elif op == "-":
-            self.instructions.append(f"{prefix}SUB")
+            self.emit(f"{prefix}SUB")
         elif op == "*":
-            self.instructions.append(f"{prefix}MUL")
+            self.emit(f"{prefix}MUL")
         elif op == "/":
-            self.instructions.append(f"{prefix}DIV")
+            self.emit(f"{prefix}DIV")
         
         # Relacionais
         elif op in (".EQ.", ".NE.", ".LT.", ".LE.", ".GT.", ".GE."):
@@ -646,15 +646,15 @@ class CodeGenerator:
                     
                     self._emit_push(r1_var)
                     self._emit_push(r2_var)
-                    self.instructions.append("EQUAL")
+                    self.emit("EQUAL")
                     
                     self._emit_push(i1_var)
                     self._emit_push(i2_var)
-                    self.instructions.append("EQUAL")
+                    self.emit("EQUAL")
                     
-                    self.instructions.append("AND") 
+                    self.emit("AND") 
                     return
-                self.instructions.append("EQUAL")
+                self.emit("EQUAL")
             elif op == ".NE.":
                 if is_complex_comp:
                     r1_var = self.lookup("__comp_r1")
@@ -669,35 +669,35 @@ class CodeGenerator:
                     
                     self._emit_push(r1_var)
                     self._emit_push(r2_var)
-                    self.instructions.append("EQUAL")
-                    self.instructions.append("NOT")
+                    self.emit("EQUAL")
+                    self.emit("NOT")
                     
                     self._emit_push(i1_var)
                     self._emit_push(i2_var)
-                    self.instructions.append("EQUAL")
-                    self.instructions.append("NOT")
+                    self.emit("EQUAL")
+                    self.emit("NOT")
                     
-                    self.instructions.append("OR")
+                    self.emit("OR")
                     return
-                self.instructions.append("EQUAL")
-                self.instructions.append("NOT")
+                self.emit("EQUAL")
+                self.emit("NOT")
             elif op == ".LT.":
-                self.instructions.append(f"{prefix}INF")
+                self.emit(f"{prefix}INF")
             elif op == ".LE.":
-                self.instructions.append(f"{prefix}INFEQ")
+                self.emit(f"{prefix}INFEQ")
             elif op == ".GT.":
-                self.instructions.append(f"{prefix}SUP")
+                self.emit(f"{prefix}SUP")
             elif op == ".GE.":
-                self.instructions.append(f"{prefix}SUPEQ")
+                self.emit(f"{prefix}SUPEQ")
         
         elif op == ".EQV.":
-            self.instructions.append("EQUAL")
+            self.emit("EQUAL")
         elif op == ".NEQV.":
-            self.instructions.append("EQUAL")
-            self.instructions.append("NOT")
+            self.emit("EQUAL")
+            self.emit("NOT")
         
         elif op == '//':
-            self.instructions.append("CONCAT")
+            self.emit("CONCAT")
         
         elif op == '**' or op == 'POWER':
             lbl_start = self.new_label("powStart")
@@ -709,27 +709,27 @@ class CodeGenerator:
             
             self._emit_store(var_exp)
             self._emit_store(var_base)
-            self.instructions.append("PUSHI 1")
+            self.emit("PUSHI 1")
             self._emit_store(var_res)
             
-            self.instructions.append(f"{lbl_start}:")
+            self.emit(f"{lbl_start}:")
             self._emit_push(var_exp)
-            self.instructions.append("PUSHI 0")
-            self.instructions.append("SUP")
-            self.instructions.append(f"JZ {lbl_end}")
+            self.emit("PUSHI 0")
+            self.emit("SUP")
+            self.emit(f"JZ {lbl_end}")
             
             self._emit_push(var_res)
             self._emit_push(var_base)
-            self.instructions.append("MUL")
+            self.emit("MUL")
             self._emit_store(var_res)
             
             self._emit_push(var_exp)
-            self.instructions.append("PUSHI 1")
-            self.instructions.append("SUB")
+            self.emit("PUSHI 1")
+            self.emit("SUB")
             self._emit_store(var_exp)
             
-            self.instructions.append(f"JUMP {lbl_start}")
-            self.instructions.append(f"{lbl_end}:")
+            self.emit(f"JUMP {lbl_start}")
+            self.emit(f"{lbl_end}:")
             self._emit_push(var_res)
         
         # Lógicos com Curto-circuito
@@ -737,29 +737,29 @@ class CodeGenerator:
             lbl_false = self.new_label("andFalse")
             lbl_end = self.new_label("andEnd")
             
-            self.instructions.append("DUP 1")
-            self.instructions.append(f"JZ {lbl_false}")
-            self.instructions.append("POP 1")
+            self.emit("DUP 1")
+            self.emit(f"JZ {lbl_false}")
+            self.emit("POP 1")
             self.generate(node.right)
-            self.instructions.append(f"JUMP {lbl_end}")
+            self.emit(f"JUMP {lbl_end}")
             
-            self.instructions.append(f"{lbl_false}:")
-            self.instructions.append(f"{lbl_end}:")
+            self.emit(f"{lbl_false}:")
+            self.emit(f"{lbl_end}:")
             return
 
         elif op == ".OR.": 
             lbl_true = self.new_label("orTrue")
             lbl_end = self.new_label("orEnd")
             
-            self.instructions.append("DUP 1")
-            self.instructions.append("NOT")
-            self.instructions.append(f"JZ {lbl_true}")
-            self.instructions.append("POP 1")
+            self.emit("DUP 1")
+            self.emit("NOT")
+            self.emit(f"JZ {lbl_true}")
+            self.emit("POP 1")
             self.generate(node.right)
-            self.instructions.append(f"JUMP {lbl_end}")
+            self.emit(f"JUMP {lbl_end}")
             
-            self.instructions.append(f"{lbl_true}:")
-            self.instructions.append(f"{lbl_end}:")
+            self.emit(f"{lbl_true}:")
+            self.emit(f"{lbl_end}:")
             return
 
     def generate_UnOp(self, node: Any) -> None:
@@ -769,24 +769,24 @@ class CodeGenerator:
             t = getattr(node.expr, "expr_type", "INTEGER")
             prefix = "F" if t in ("REAL", "DOUBLEPRECISION") else ""
             if prefix == "F":
-                self.instructions.append("PUSHF -1.0")
-                self.instructions.append("FMUL")
+                self.emit("PUSHF -1.0")
+                self.emit("FMUL")
             else:
-                self.instructions.append("PUSHI -1")
-                self.instructions.append("MUL")
+                self.emit("PUSHI -1")
+                self.emit("MUL")
         elif op in (".NOT."):
-            self.instructions.append("PUSHI 1")
-            self.instructions.append("SWAP")
-            self.instructions.append("SUB")
+            self.emit("PUSHI 1")
+            self.emit("SWAP")
+            self.emit("SUB")
 
     def generate_Mod(self, node):
         self.generate(node.left)
         self.generate(node.right)
-        self.instructions.append("MOD") 
+        self.emit("MOD") 
 
     def generate_Function(self, node: Any) -> None:
         func_name = node.name.name if hasattr(node.name, "name") else node.name
-        self.instructions.append(f"{func_name}:")
+        self.emit(f"{func_name}:")
         self.curr_unit = func_name
 
         # Salvar scope anterior
@@ -831,15 +831,15 @@ class CodeGenerator:
         # Alocar espaço para as variáveis locais
         num_locals = self.fp_offset
         if num_locals > 0:
-            self.instructions.append(f"PUSHN {num_locals}")
+            self.emit(f"PUSHN {num_locals}")
 
         self.generate(node.labeled_statements)
         
         # Limpar lixo local ANTES do return implícito
         if self.fp_offset > 0:
-            self.instructions.append(f"POP {self.fp_offset}")
+            self.emit(f"POP {self.fp_offset}")
 
-        self.instructions.append("RETURN")
+        self.emit("RETURN")
 
         # Restaurar scope
         self.locals = old_locals
@@ -848,7 +848,7 @@ class CodeGenerator:
     def generate_Subroutine(self, node: Any) -> None:
         sub_name = node.name.name if hasattr(node.name, "name") else node.name
         self.curr_unit = sub_name
-        self.instructions.append(f"{sub_name}:")
+        self.emit(f"{sub_name}:")
 
         # Salvar scope anterior
         old_locals = self.locals
@@ -880,16 +880,16 @@ class CodeGenerator:
 
         num_locals = self.fp_offset
         if num_locals > 0:
-            self.instructions.append(f"PUSHN {num_locals}")
+            self.emit(f"PUSHN {num_locals}")
 
         # 3. Gerar código da subrotina
         self.generate(node.labeled_statements)
         
         if self.fp_offset > 0:
-            self.instructions.append(f"POP {self.fp_offset}")
+            self.emit(f"POP {self.fp_offset}")
         
         # 4. Retornar sem valor
-        self.instructions.append("RETURN")
+        self.emit("RETURN")
 
         # Restaurar scope
         self.locals = old_locals
@@ -897,8 +897,8 @@ class CodeGenerator:
 
     def generate_Return(self, node: Any) -> None:
         if self.fp_offset > 0:
-            self.instructions.append(f"POP {self.fp_offset}")
-        self.instructions.append("RETURN")
+            self.emit(f"POP {self.fp_offset}")
+        self.emit("RETURN")
 
     def generate_FunctionorArraysAccess(self, node: Any) -> None:
         name = node.name.name if hasattr(node.name, "name") else node.name
@@ -912,21 +912,21 @@ class CodeGenerator:
             # 2. Carregar valor
             is_2slot_arr = var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION")
             if is_2slot_arr:
-                self.instructions.append("DUP 1")
-                self.instructions.append("LOAD 0")
-                self.instructions.append("SWAP")
-                self.instructions.append("LOAD 1")
+                self.emit("DUP 1")
+                self.emit("LOAD 0")
+                self.emit("SWAP")
+                self.emit("LOAD 1")
             else:
-                self.instructions.append("LOAD 0")
+                self.emit("LOAD 0")
 
         elif node.is_function:
             # 1. Reservar espaço para o retorno
             ret_type = getattr(node, "expr_type", "INTEGER")
             if ret_type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
-                self.instructions.append("PUSHI 0")
-                self.instructions.append("PUSHI 0")
+                self.emit("PUSHI 0")
+                self.emit("PUSHI 0")
             else:
-                self.instructions.append("PUSHI 0")
+                self.emit("PUSHI 0")
 
             # 2. Empilhar argumentos por referência
             for i, arg in enumerate(node.expressionList):
@@ -934,11 +934,11 @@ class CodeGenerator:
                     arg_var = self.lookup(arg.name)
                     if arg_var:
                         if arg_var.scope == "GLOBAL":
-                            self.instructions.append("PUSHGP")
+                            self.emit("PUSHGP")
                         else:
-                            self.instructions.append("PUSHFP")
-                        self.instructions.append(f"PUSHI {arg_var.offset}")
-                        self.instructions.append("PADD")
+                            self.emit("PUSHFP")
+                        self.emit(f"PUSHI {arg_var.offset}")
+                        self.emit("PADD")
                     else:
                         self.generate(arg)
                 elif isinstance(arg, FunctionorArraysAccess) and arg.is_array:
@@ -955,19 +955,19 @@ class CodeGenerator:
                             continue
                         arg_type = getattr(arg, "expr_type", "INTEGER")
                         if arg_type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
-                            self.instructions.append(f"STOREL {temp_var.offset + 1}")
-                            self.instructions.append(f"STOREL {temp_var.offset}")
+                            self.emit(f"STOREL {temp_var.offset + 1}")
+                            self.emit(f"STOREL {temp_var.offset}")
                         else:
-                            self.instructions.append(f"STOREL {temp_var.offset}")
+                            self.emit(f"STOREL {temp_var.offset}")
                         
                         # Passar endereço do temporário
-                        self.instructions.append("PUSHFP")
-                        self.instructions.append(f"PUSHI {temp_var.offset}")
-                        self.instructions.append("PADD")
+                        self.emit("PUSHFP")
+                        self.emit(f"PUSHI {temp_var.offset}")
+                        self.emit("PADD")
 
             # 3. Chamar a função
-            self.instructions.append(f"PUSHA {name}")
-            self.instructions.append("CALL")
+            self.emit(f"PUSHA {name}")
+            self.emit("CALL")
 
             # 4. Limpar argumentos da pilha
             total_arg_slots = 0
@@ -980,7 +980,7 @@ class CodeGenerator:
                 total_arg_slots += 1
             
             if total_arg_slots > 0:
-                self.instructions.append(f"POP {total_arg_slots}")
+                self.emit(f"POP {total_arg_slots}")
         
         else:
             print(f"DEBUG: {name} is neither marked as array nor function!")
@@ -994,11 +994,11 @@ class CodeGenerator:
                 arg_var = self.lookup(arg.name)
                 if arg_var:
                     if arg_var.scope == "GLOBAL":
-                        self.instructions.append("PUSHGP")
+                        self.emit("PUSHGP")
                     else:
-                        self.instructions.append("PUSHFP")
-                    self.instructions.append(f"PUSHI {arg_var.offset}")
-                    self.instructions.append("PADD")
+                        self.emit("PUSHFP")
+                    self.emit(f"PUSHI {arg_var.offset}")
+                    self.emit("PADD")
                 else:
                     self.generate(arg)
             elif isinstance(arg, FunctionorArraysAccess) and arg.is_array:
@@ -1015,19 +1015,19 @@ class CodeGenerator:
                         continue
                     arg_type = getattr(arg, "expr_type", "INTEGER")
                     if arg_type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
-                        self.instructions.append(f"STOREL {temp_var.offset + 1}")
-                        self.instructions.append(f"STOREL {temp_var.offset}")
+                        self.emit(f"STOREL {temp_var.offset + 1}")
+                        self.emit(f"STOREL {temp_var.offset}")
                     else:
-                        self.instructions.append(f"STOREL {temp_var.offset}")
+                        self.emit(f"STOREL {temp_var.offset}")
                     
                     # Passar endereço do temporário
-                    self.instructions.append("PUSHFP")
-                    self.instructions.append(f"PUSHI {temp_var.offset}")
-                    self.instructions.append("PADD")
+                    self.emit("PUSHFP")
+                    self.emit(f"PUSHI {temp_var.offset}")
+                    self.emit("PADD")
 
         # 2. Chamar a subrotina
-        self.instructions.append(f"PUSHA {name}")
-        self.instructions.append("CALL")
+        self.emit(f"PUSHA {name}")
+        self.emit("CALL")
 
         # 3. Limpar argumentos da pilha
         total_arg_slots = 0
@@ -1035,14 +1035,14 @@ class CodeGenerator:
             total_arg_slots += 1
         
         if total_arg_slots > 0:
-            self.instructions.append(f"POP {total_arg_slots}")
+            self.emit(f"POP {total_arg_slots}")
         
 
     def emit(self, line):
         self.instructions.append(line)
 
     def emit_label(self, label):
-        self.instructions.append(f"{label}:")
+        self.emit(f"{label}:")
 
     def get_full_label(self, label_val: Any) -> str:
         """Retorna o nome da label prefixado pela unidade atual para evitar colisões."""
