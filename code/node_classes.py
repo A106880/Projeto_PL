@@ -130,7 +130,7 @@ class MainProgram(Program_Unit):
     
 class Function(Program_Unit):
     arguments: List[Union[Variable, str]]
-    return_type: str
+    return_type: Optional[str]
 
     def __init__(self, return_type:Optional[str], name:str, arguments:List[Union[Variable, str]]
         ,declarations:List[Declaration], labeled_statements:List[LabeledStatement]):
@@ -559,6 +559,18 @@ class RealVal(Node):
     def repr(self, indent=0) -> str:
         return f"{'  '*indent}RealVal({self.value})"
 
+class DoublePrecisionVal(Node):
+    value: float
+
+    def __init__(self, value: float):
+        super().__init__()
+        self.value = value
+
+    def __repr__(self) -> str: return self.repr(0)
+
+    def repr(self, indent=0) -> str:
+        return f"{'  '*indent}DoublePrecisionVal({self.value})"
+
 class StringVal(Node):
     value: str
 
@@ -602,7 +614,6 @@ class LabeledDO(Statement):
         return self.repr(0)
 
     def repr(self, indent = 0):
-        space = '  '*indent
         return (f"DO {self.label} (INIT = {self.control_var} = {self.control_var_init_value}, LIMIT = {self.iterations_number}, STEP = {self.step})"
                 # f"  LabeledStatements: {self.labeled_statements}\n"
                 # f"{self.label} END DO"

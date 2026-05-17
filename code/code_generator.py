@@ -1,6 +1,11 @@
 from __future__ import annotations
 from typing import Optional, Dict, List, Any
-from node_classes import Call, StringVal, Variable, FunctionorArraysAccess
+from node_classes import (
+    Node, Call, StringVal, Variable, FunctionorArraysAccess,
+    IntVal, RealVal, LogicalVal, ComplexVal, DoublePrecisionComplexVal,
+    BlockDO, AssignedGoto, ComputedGoto, Goto, Expression, BinOp, LabeledDO,
+    MainProgram, Program_Unit, Print, Read, Write
+)
 
 
 class EnvVar:
@@ -22,16 +27,22 @@ class CodeGenerator:
         self.fp_offset: int = 0
         self.semantic_info: Optional[Any] = None
         self._label_count: int = 0
-
-        # Alocar variáveis globais temporárias para a operação de Exponenciação (POWER)
-        self.add_global("__pow_base_i", "INTEGER")
-        self.add_global("__pow_exp_i", "INTEGER")
-        self.add_global("__pow_res_i", "INTEGER")
-        self.add_global("__pow_base_r", "REAL")
-        self.add_global("__pow_res_r", "REAL")
+        self._literals: Dict[Any, tuple[EnvVar, Any]] = {}
 
     def set_semantic_info(self, parser: Any) -> None:
         self.semantic_info = parser
+
+    def _setup_scratch_vars(self) -> None:
+        self.add_local("__comp_r1", "REAL")
+        self.add_local("__comp_i1", "REAL")
+        self.add_local("__comp_r2", "REAL")
+        self.add_local("__comp_i2", "REAL")
+        self.add_local("__comp_temp", "REAL")
+        self.add_local("__pow_base_i", "INTEGER")
+        self.add_local("__pow_exp_i", "INTEGER")
+        self.add_local("__pow_res_i", "INTEGER")
+        for i in range(10):
+            self.add_local(f"__arg_temp_{i}", "DOUBLECOMPLEX", size=2)
 
     def add_global(self, name: str, var_type: str, size: int = 1) -> EnvVar:
         var = EnvVar(name, "GLOBAL", self.gp_offset, var_type)
@@ -49,6 +60,86 @@ class CodeGenerator:
         if name in self.locals:
             return self.locals[name]
         return self.globals.get(name)
+
+    def _emit_store(self, var: Optional[EnvVar]) -> None:
+        if var is None:
+            print("DEBUG: _emit_store called with None")
+            return
+        self.instructions.append(f"STORE{'G' if var.scope == 'GLOBAL' else 'L'} {var.offset}")
+
+    def _emit_push(self, var: Optional[EnvVar]) -> None:
+        if var is None:
+            print("DEBUG: _emit_push called with None")
+            return
+        self.instructions.append(f"PUSH{'G' if var.scope == 'GLOBAL' else 'L'} {var.offset}")
+
+    def _generate_array_addr(self, node: FunctionorArraysAccess) -> None:
+        node_name = getattr(node, "name", None)
+        var_name = getattr(node_name, "name", node_name)
+        if not isinstance(var_name, str):
+            print(f"DEBUG: Array name {var_name} is not a valid string!")
+            return
+        var = self.lookup(var_name)
+        if not var:
+            print(f"DEBUG: Array {var_name} not found in environment!")
+            return
+
+        # 1. Endereço base
+        self.instructions.append("PUSHGP" if var.scope == "GLOBAL" else "PUSHFP")
+        self.instructions.append(f"PUSHI {var.offset}")
+        self.instructions.append("PADD")
+
+        # 2. Offset (Índice - 1)
+        self.generate(node.expressionList[0])
+        self.instructions.append("PUSHI 1")
+        self.instructions.append("SUB")
+        
+        # 3. Escalar se for complexo (2 slots por elemento)
+        if var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
+            self.instructions.append("PUSHI 2")
+            self.instructions.append("MUL")
+        
+        self.instructions.append("PADD")
+
+    def _collect_literals(self, node: Any) -> None:
+        if node is None:
+            return
+        if isinstance(node, list):
+            for n in node:
+                self._collect_literals(n)
+            return
+
+        literal_types = (IntVal, RealVal, StringVal, LogicalVal, ComplexVal, DoublePrecisionComplexVal)
+        if isinstance(node, literal_types):
+            if isinstance(node, (ComplexVal, DoublePrecisionComplexVal)):
+                key = (type(node).__name__, node.elem1.value, node.elem2.value)
+            else:
+                key = (type(node).__name__, node.value)
+            
+            if key not in self._literals:
+                t_name = "COMPLEX" if isinstance(node, (ComplexVal, DoublePrecisionComplexVal)) else \
+                         "INTEGER" if isinstance(node, (IntVal, LogicalVal)) else \
+                         "REAL" if isinstance(node, RealVal) else "CHARACTER"
+                size = 2 if t_name == "COMPLEX" else 1
+                var_name = f"__lit_{len(self._literals)}"
+                self._literals[key] = (self.add_global(var_name, t_name, size), node)
+            return
+
+        for attr in getattr(node, "__dict__", {}).values():
+            if isinstance(attr, (Node, list)):
+                self._collect_literals(attr)
+
+    def _get_literal_addr_instrs(self, node: Any) -> List[str]:
+        if isinstance(node, (ComplexVal, DoublePrecisionComplexVal)):
+            key = (type(node).__name__, node.elem1.value, node.elem2.value)
+        else:
+            key = (type(node).__name__, node.value)
+        
+        entry = self._literals.get(key)
+        if entry:
+            var, _ = entry
+            return ["PUSHGP", f"PUSHI {var.offset}", "PADD"]
+        return []
 
     def generate(self, node: Any) -> None:
         if node is None:
@@ -78,65 +169,98 @@ class CodeGenerator:
             self.generate(ast)
 
     def generate_MainProgram(self, node: Any) -> None:
-        self.instructions.append("START")
-        
         unit_name = node.name.name if hasattr(node.name, "name") else (node.name or "MAIN")
-        
         self.curr_unit = unit_name
 
-        symbols = self.semantic_info.unit_symbols.get(unit_name, {})
+        # 1. Recolher todos os literais da AST para alocar globais
+        self._collect_literals(node)
+
+        symbols = getattr(self.semantic_info, "unit_symbols", {}).get(unit_name, {}) if self.semantic_info else {}
         
+        # 2. Declarar Globais
         for name, info in symbols.items():
             if not info.get("is_function") and not info.get("is_subroutine"):
                 var_type = info.get("type")
                 is_array = info.get("is_array")
-                base_size = 2 if var_type == "COMPLEX" else 1
+                base_size = 2 if var_type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION") else 1
                 size = (info.get("array_size", 1) if is_array else 1) * base_size
                 self.add_global(name, var_type, size)
 
+        # 3. Alocar Globais na Stack
         if self.gp_offset > 0:
             self.instructions.append(f"PUSHN {self.gp_offset}")
+
+        # 4. Definir FP para o início do Activation Record do Main
+        self.instructions.append("START")
+
+        # 5. Inicializar Variáveis de Literais
+        for var, lit_node in self._literals.values():
+            if isinstance(lit_node, (ComplexVal, DoublePrecisionComplexVal)):
+                self.instructions.append(f"PUSHF {lit_node.elem1.value}")
+                self.instructions.append(f"STOREG {var.offset}")
+                self.instructions.append(f"PUSHF {lit_node.elem2.value}")
+                self.instructions.append(f"STOREG {var.offset + 1}")
+            elif isinstance(lit_node, RealVal):
+                self.instructions.append(f"PUSHF {lit_node.value}")
+                self.instructions.append(f"STOREG {var.offset}")
+            elif isinstance(lit_node, StringVal):
+                self.instructions.append(f'PUSHS "{lit_node.value}"')
+                self.instructions.append(f"STOREG {var.offset}")
+            elif isinstance(lit_node, LogicalVal):
+                val = 1 if lit_node.value else 0
+                self.instructions.append(f"PUSHI {val}")
+                self.instructions.append(f"STOREG {var.offset}")
+            else: # IntVal
+                self.instructions.append(f"PUSHI {lit_node.value}")
+                self.instructions.append(f"STOREG {var.offset}")
+
+        self.fp_offset = 0
+        self._setup_scratch_vars()
+        num_locals = self.fp_offset
+        if num_locals > 0:
+            self.instructions.append(f"PUSHN {num_locals}")
 
         self.generate(node.labeled_statements)
         self.instructions.append("STOP")
 
     def generate_LabeledStatement(self, node: Any) -> None:
         if node.label:
-            self.instructions.append(f"LABEL{node.label.value}:")
-            print(f"WARNING: Label generation ({node.label}) is not yet implemented in the CodeGen.")
+            self.emit_label(self.get_full_label(node.label.value))
         if node.statement:
             self.generate(node.statement)
-
-   # def generate_Goto(self,node : Any) -> None:
-    #    self.instructions.append(f"JUMP {self.curr_unit}{node.label.value}")
 
     def generate_Assignment(self, node: Any) -> None:
         var_name = node.name.name if hasattr(node.name, "name") else node.name
         
-        # Se for atribuição a um array ARR(I) = valor
         if isinstance(node.name, FunctionorArraysAccess):
-            # 1. Calcular endereço base
-            var = self.lookup(var_name.name if hasattr(node.name, "name") else node.name)
+            var = self.lookup(var_name)
             if var:
-                if var.scope == "GLOBAL":
-                    self.instructions.append("PUSHGP")
-                else:
-                    self.instructions.append("PUSHFP")
-                self.instructions.append(f"PUSHI {var.offset}")
-                self.instructions.append("PADD")
+                # 1. Calcular endereço do elemento
+                self._generate_array_addr(node.name)
 
-                # 2. Calcular Offset (Índice - 1)
-                self.generate(node.name.expressionList[0])
-                self.instructions.append("PUSHI 1")
-                self.instructions.append("SUB")
-                self.instructions.append("PADD") # Endereço final do elemento
-
-                # 3. Gerar o valor a ser guardado e fazer STORE 0
+                # 2. Gerar o valor a ser guardado
+                is_complex_arr = var.type in ("COMPLEX", "DOUBLECOMPLEX")
+                if is_complex_arr:
+                    self.instructions.append("DUP 1")
+                
                 self.generate(node.value)
                 val_type = getattr(node.value, "expr_type", "INTEGER")
-                if var.type == "COMPLEX" and val_type != "COMPLEX":
+
+                # Conversão implícita
+                if var.type in ("REAL", "DOUBLEPRECISION") and val_type == "INTEGER":
+                    self.instructions.append("ITOF")
+                elif var.type == "INTEGER" and val_type in ("REAL", "DOUBLEPRECISION"):
+                    self.instructions.append("FTOI")
+
+                if is_complex_arr and val_type not in ("COMPLEX", "DOUBLECOMPLEX"):
                     self.instructions.append("PUSHF 0.0")
-                self.instructions.append("STORE 0")
+                
+                if is_complex_arr:
+                    self.instructions.append("SWAP")
+                    self.instructions.append("STORE 0")
+                    self.instructions.append("STORE 1")
+                else:
+                    self.instructions.append("STORE 0")
             return
 
         # Atribuição normal a variável
@@ -144,30 +268,35 @@ class CodeGenerator:
         var = self.lookup(var_name)
         if var:
             val_type = getattr(node.value, "expr_type", "INTEGER")
-            if var.type == "COMPLEX" and val_type != "COMPLEX":
+            
+            # Conversão implícita
+            if var.type in ("REAL", "DOUBLEPRECISION") and val_type == "INTEGER":
+                self.instructions.append("ITOF")
+            elif var.type == "INTEGER" and val_type in ("REAL", "DOUBLEPRECISION"):
+                self.instructions.append("FTOI")
+
+            is_2slot = var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION")
+            if is_2slot and val_type not in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION"):
                 self.instructions.append("PUSHF 0.0")
-            is_complex = var.type == "COMPLEX"
+            
             if var.is_ref:
-                if is_complex:
-                    # Guardar Imaginário em base+1
-                    self.instructions.append("DUP 1") # Duplica o endereço
-                    self.instructions.append("PUSHI 1")
-                    self.instructions.append("PADD")
-                    self.instructions.append("PUSHFP") 
-                    self.instructions.append("LOAD 1") 
-                    
-                    pass # TODO: Refinar isto para referências complexas
-                self.instructions.append(f"PUSHL {var.offset}")
-                self.instructions.append("SWAP")
-                self.instructions.append("STORE 0")
+                if is_2slot:
+                    self.instructions.append(f"PUSHL {var.offset}")
+                    self.instructions.append("DUP 0")
+                    self.instructions.append("STORE 1")
+                    self.instructions.append("STORE 0")
+                else:
+                    self.instructions.append(f"PUSHL {var.offset}")
+                    self.instructions.append("SWAP")
+                    self.instructions.append("STORE 0")
             elif var.scope == "GLOBAL":
-                if is_complex:
+                if is_2slot:
                     self.instructions.append(f"STOREG {var.offset + 1}")
                     self.instructions.append(f"STOREG {var.offset}")
                 else:
                     self.instructions.append(f"STOREG {var.offset}")
             else:
-                if is_complex:
+                if is_2slot:
                     self.instructions.append(f"STOREL {var.offset + 1}")
                     self.instructions.append(f"STOREL {var.offset}")
                 else:
@@ -186,7 +315,7 @@ class CodeGenerator:
                     self.instructions.append("WRITEI")
                 elif t == "REAL":
                     self.instructions.append("WRITEF")
-                elif t == "COMPLEX":
+                elif t in ("COMPLEX", "DOUBLECOMPLEX"):
                     self.instructions.append('PUSHS "("')
                     self.instructions.append("WRITES")
                     self.instructions.append("SWAP") 
@@ -197,11 +326,11 @@ class CodeGenerator:
                     self.instructions.append('PUSHS ")"')
                     self.instructions.append("WRITES")
                 elif t == "LOGICAL":
-                    self.instructions.append("WRITEI") # Imprime 0 ou 1
+                    self.instructions.append("WRITEI")
                 elif t == "CHARACTER" or t == "HOLLERITH":
                     self.instructions.append("WRITES")
                 else:
-                    self.instructions.append("WRITEI")  # Fallback
+                    self.instructions.append("WRITEI")
         self.instructions.append("WRITELN")
 
     def generate_Write(self, node: Any) -> None:
@@ -215,7 +344,7 @@ class CodeGenerator:
                     self.instructions.append("WRITEI")
                 elif t == "REAL":
                     self.instructions.append("WRITEF")
-                elif t == "COMPLEX":
+                elif t in ("COMPLEX", "DOUBLECOMPLEX"):
                     self.instructions.append('PUSHS "("')
                     self.instructions.append("WRITES")
                     self.instructions.append("SWAP") 
@@ -236,7 +365,7 @@ class CodeGenerator:
     def generate_Read(self, node: Any) -> None:
         if node.iolist:
             for item in node.iolist:
-                # 1. Ler da entrada (instrução READ da VM coloca endereço da string na stack)
+                # 1. Ler da entrada
                 self.instructions.append("READ")
                 
                 # 2. Determinar o tipo do destino
@@ -258,27 +387,15 @@ class CodeGenerator:
                         else:
                             self.instructions.append(f"STOREL {var.offset}")
                 elif isinstance(item, FunctionorArraysAccess):
-                    var_name = item.name.name if hasattr(item.name, "name") else item.name
+                    name_attr = getattr(item, "name", None)
+                    var_name = getattr(name_attr, "name", name_attr)
                     var = self.lookup(var_name)
                     if var:
-                        # Precisamos do endereço base + (índice - 1)
-                        # Como já temos o valor convertido no topo da stack, 
-                        # vamos guardá-lo temporariamente ou preparar o endereço primeiro.
-                        
-                        # 1. Calcular Endereço (precisamos fazer isso ANTES do READ ou usar SWAP)
-                        # Vamos reformular:
-                        # 1. Calcular Endereço e colocar na pilha
-                        # 2. READ
-                        # 3. ATOI/ATOF
-                        # 4. STORE 0
-                        
-                        # Voltamos atrás no READ para este item:
-                        self.instructions.pop() # remove converter se houver
+                        self.instructions.pop()
                         if t in ("INTEGER", "REAL"):
-                            self.instructions.pop() # remove converter
-                        self.instructions.pop() # remove READ
+                            self.instructions.pop()
+                        self.instructions.pop()
                         
-                        # Agora sim:
                         if var.scope == "GLOBAL":
                             self.instructions.append("PUSHGP")
                         else:
@@ -289,9 +406,8 @@ class CodeGenerator:
                         self.generate(item.expressionList[0])
                         self.instructions.append("PUSHI 1")
                         self.instructions.append("SUB")
-                        self.instructions.append("PADD") # Endereço final na pilha
+                        self.instructions.append("PADD")
                         
-                        # Agora o READ
                         self.instructions.append("READ")
                         if t == "INTEGER":
                             self.instructions.append("ATOI")
@@ -305,6 +421,10 @@ class CodeGenerator:
 
     def generate_RealVal(self, node: Any) -> None:
         self.instructions.append(f"PUSHF {node.value}")
+
+    def generate_DoublePrecisionVal(self, node: Any) -> None:
+        self.instructions.append(f"PUSHF {node.value}")
+        self.instructions.append("PUSHF 0.0")
 
     def generate_ComplexVal(self, node: Any) -> None:
         self.generate(node.elem1)
@@ -323,22 +443,22 @@ class CodeGenerator:
     def generate_Variable(self, node: Any) -> None:
         var = self.lookup(node.name)
         if var:
-            is_complex = var.type == "COMPLEX"
+            is_2slot = var.type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION")
             if var.is_ref:
                 self.instructions.append(f"PUSHL {var.offset}")
                 self.instructions.append("LOAD 0")
-                if is_complex:
+                if is_2slot:
                     self.instructions.append(f"PUSHL {var.offset}")
                     self.instructions.append("PUSHI 1")
                     self.instructions.append("PADD")
                     self.instructions.append("LOAD 0")
             elif var.scope == "GLOBAL":
                 self.instructions.append(f"PUSHG {var.offset}")
-                if is_complex:
+                if is_2slot:
                     self.instructions.append(f"PUSHG {var.offset + 1}")
             else:
                 self.instructions.append(f"PUSHL {var.offset}")
-                if is_complex:
+                if is_2slot:
                     self.instructions.append(f"PUSHL {var.offset + 1}")
 
     def generate_BinOp(self, node: Any) -> None:
@@ -347,101 +467,111 @@ class CodeGenerator:
         l_type = getattr(node.left, "expr_type", "INTEGER")
         r_type = getattr(node.right, "expr_type", "INTEGER")
         
-        # Se algum dos lados for COMPLEX, ambos devem ser tratados como tal na stack
-        is_any_complex = (l_type == "COMPLEX" or r_type == "COMPLEX")
+        complex_types = ("COMPLEX", "DOUBLECOMPLEX")
+        is_any_complex = (l_type in complex_types or r_type in complex_types)
         
-        # Gerar o Lado Esquerdo (sempre necessário)
         self.generate(node.left)
-        if is_any_complex and l_type != "COMPLEX":
+        if is_any_complex and l_type not in complex_types:
             self.instructions.append("PUSHF 0.0")
             
-        # Para operadores lógicos (.AND., .OR.), o Lado Direito é gerado lá dentro (Curto-circuito)
         if op not in (".AND.", ".OR."):
             self.generate(node.right)
-            if is_any_complex and r_type != "COMPLEX":
+            if is_any_complex and r_type not in complex_types:
                 self.instructions.append("PUSHF 0.0")
 
-        # 1. Aritmética Complexa
-        if t == "COMPLEX":
+        if t in complex_types:
+            r1_var = self.lookup("__comp_r1")
+            i1_var = self.lookup("__comp_i1")
+            r2_var = self.lookup("__comp_r2")
+            i2_var = self.lookup("__comp_i2")
+            temp_var = self.lookup("__comp_temp")
+
             if op in ("+", "-"):
                 prefix = "F"
-                self.instructions.append("SWAP")
-                self.instructions.append("STOREL -1")   
+                # Stack: R1, I1, R2, I2
+                self._emit_store(i2_var)
+                self._emit_store(r2_var)
+                self._emit_store(i1_var)
+                self._emit_store(r1_var)
+                
+                # Real: R1 +/- R2
+                self._emit_push(r1_var)
+                self._emit_push(r2_var)
                 self.instructions.append(f"{prefix}{'ADD' if op == '+' else 'SUB'}")
-                self.instructions.append("STOREL -2")
-                self.instructions.append("PUSHL -1")    
-                self.instructions.append(f"{prefix}{'ADD' if op == '+' else 'SUB'}")    
-                self.instructions.append("PUSHL -2")    
+                
+                # Imag: I1 +/- I2
+                self._emit_push(i1_var)
+                self._emit_push(i2_var)
+                self.instructions.append(f"{prefix}{'ADD' if op == '+' else 'SUB'}")
                 return
             
             elif op == "*":
                 # (R1, I1) * (R2, I2) -> (R1*R2 - I1*I2), (R1*I2 + I1*R2)
-                # Stack inicial: R1, I1, R2, I2
-                self.instructions.append("STOREL -4") # I2
-                self.instructions.append("STOREL -3") # R2
-                self.instructions.append("STOREL -2") # I1
-                self.instructions.append("STOREL -1") # R1
+                self._emit_store(i2_var)
+                self._emit_store(r2_var)
+                self._emit_store(i1_var)
+                self._emit_store(r1_var)
                 
                 # Real: R1*R2 - I1*I2
-                self.instructions.append("PUSHL -1")
-                self.instructions.append("PUSHL -3")
+                self._emit_push(r1_var)
+                self._emit_push(r2_var)
                 self.instructions.append("FMUL")
-                self.instructions.append("PUSHL -2")
-                self.instructions.append("PUSHL -4")
+                self._emit_push(i1_var)
+                self._emit_push(i2_var)
                 self.instructions.append("FMUL")
                 self.instructions.append("FSUB")
                 
                 # Imag: R1*I2 + I1*R2
-                self.instructions.append("PUSHL -1")
-                self.instructions.append("PUSHL -4")
+                self._emit_push(r1_var)
+                self._emit_push(i2_var)
                 self.instructions.append("FMUL")
-                self.instructions.append("PUSHL -2")
-                self.instructions.append("PUSHL -3")
+                self._emit_push(i1_var)
+                self._emit_push(r2_var)
                 self.instructions.append("FMUL")
                 self.instructions.append("FADD")
                 return
 
             elif op == "/":
                 # (R1, I1) / (R2, I2) -> [(ac+bd)/D] + [(bc-ad)/D]i onde D = c^2+d^2
-                self.instructions.append("STOREL -4") # I2 (d)
-                self.instructions.append("STOREL -3") # R2 (c)
-                self.instructions.append("STOREL -2") # I1 (b)
-                self.instructions.append("STOREL -1") # R1 (a)
+                self._emit_store(i2_var)
+                self._emit_store(r2_var)
+                self._emit_store(i1_var)
+                self._emit_store(r1_var)
 
                 # 1. Calcular Denominador D = c^2 + d^2
-                self.instructions.append("PUSHL -3")
-                self.instructions.append("PUSHL -3")
+                self._emit_push(r2_var)
+                self._emit_push(r2_var)
                 self.instructions.append("FMUL")
-                self.instructions.append("PUSHL -4")
-                self.instructions.append("PUSHL -4")
+                self._emit_push(i2_var)
+                self._emit_push(i2_var)
                 self.instructions.append("FMUL")
                 self.instructions.append("FADD")
-                self.instructions.append("STOREL -5") # D
+                self._emit_store(temp_var)
 
                 # 2. Parte Real: (ac + bd) / D
-                self.instructions.append("PUSHL -1")
-                self.instructions.append("PUSHL -3")
+                self._emit_push(r1_var)
+                self._emit_push(r2_var)
                 self.instructions.append("FMUL")
-                self.instructions.append("PUSHL -2")
-                self.instructions.append("PUSHL -4")
+                self._emit_push(i1_var)
+                self._emit_push(i2_var)
                 self.instructions.append("FMUL")
                 self.instructions.append("FADD")
-                self.instructions.append("PUSHL -5")
+                self._emit_push(temp_var)
                 self.instructions.append("FDIV")
 
                 # 3. Parte Imag: (bc - ad) / D
-                self.instructions.append("PUSHL -2")
-                self.instructions.append("PUSHL -3")
+                self._emit_push(i1_var)
+                self._emit_push(r2_var)
                 self.instructions.append("FMUL")
-                self.instructions.append("PUSHL -1")
-                self.instructions.append("PUSHL -4")
+                self._emit_push(r1_var)
+                self._emit_push(i2_var)
                 self.instructions.append("FMUL")
                 self.instructions.append("FSUB")
-                self.instructions.append("PUSHL -5")
+                self._emit_push(temp_var)
                 self.instructions.append("FDIV")
                 return
 
-        # Determinar prefixo (F se algum for Real)
+        # Determinar prefixo
         prefix = "F" if (l_type == "REAL" or r_type == "REAL") else ""
         
         if op == "+":
@@ -455,38 +585,53 @@ class CodeGenerator:
         
         # Relacionais
         elif op in (".EQ.", ".NE."):
-            is_complex_comp = (l_type == "COMPLEX" or r_type == "COMPLEX")
+            is_complex_comp = (l_type in complex_types or r_type in complex_types)
 
             if op == ".EQ.":
                 if is_complex_comp:
-                    # R1, I1, R2, I2
-                    self.instructions.append("STOREL -4")
-                    self.instructions.append("STOREL -3")
-                    self.instructions.append("STOREL -2")
-                    self.instructions.append("STOREL -1")
-                    self.instructions.append("PUSHL -1")
-                    self.instructions.append("PUSHL -3")
+                    r1_var = self.lookup("__comp_r1")
+                    i1_var = self.lookup("__comp_i1")
+                    r2_var = self.lookup("__comp_r2")
+                    i2_var = self.lookup("__comp_i2")
+                    
+                    self._emit_store(i2_var)
+                    self._emit_store(r2_var)
+                    self._emit_store(i1_var)
+                    self._emit_store(r1_var)
+                    
+                    self._emit_push(r1_var)
+                    self._emit_push(r2_var)
                     self.instructions.append("EQUAL")
-                    self.instructions.append("PUSHL -2")
-                    self.instructions.append("PUSHL -4")
+                    
+                    self._emit_push(i1_var)
+                    self._emit_push(i2_var)
                     self.instructions.append("EQUAL")
+                    
                     self.instructions.append("AND") 
                     return
                 self.instructions.append("EQUAL")
             else: # .NE.
                 if is_complex_comp:
-                    self.instructions.append("STOREL -4")
-                    self.instructions.append("STOREL -3")
-                    self.instructions.append("STOREL -2")
-                    self.instructions.append("STOREL -1")
-                    self.instructions.append("PUSHL -1")
-                    self.instructions.append("PUSHL -3")
+                    r1_var = self.lookup("__comp_r1")
+                    i1_var = self.lookup("__comp_i1")
+                    r2_var = self.lookup("__comp_r2")
+                    i2_var = self.lookup("__comp_i2")
+
+                    self._emit_store(i2_var)
+                    self._emit_store(r2_var)
+                    self._emit_store(i1_var)
+                    self._emit_store(r1_var)
+                    
+                    self._emit_push(r1_var)
+                    self._emit_push(r2_var)
                     self.instructions.append("EQUAL")
                     self.instructions.append("NOT")
-                    self.instructions.append("PUSHL -2")
-                    self.instructions.append("PUSHL -4")
+                    
+                    self._emit_push(i1_var)
+                    self._emit_push(i2_var)
                     self.instructions.append("EQUAL")
                     self.instructions.append("NOT")
+                    
                     self.instructions.append("OR")
                     return
                 self.instructions.append("EQUAL")
@@ -513,80 +658,40 @@ class CodeGenerator:
             lbl_start = self.new_label("pow_start")
             lbl_end = self.new_label("pow_end")
             
-            if t == "INTEGER":
-                var_base = self.lookup("__pow_base_i")
-                var_exp = self.lookup("__pow_exp_i")
-                var_res = self.lookup("__pow_res_i")
-                
-                # Stack has Base, Exp.
-                self.instructions.append(f"STOREG {var_exp.offset}")
-                self.instructions.append(f"STOREG {var_base.offset}")
-                self.instructions.append("PUSHI 1")
-                self.instructions.append(f"STOREG {var_res.offset}")
-                
-                self.instructions.append(f"{lbl_start}:")
-                self.instructions.append(f"PUSHG {var_exp.offset}")
-                self.instructions.append("PUSHI 0")
-                self.instructions.append("SUP") # exp > 0
-                self.instructions.append(f"JZ {lbl_end}")
-                
-                self.instructions.append(f"PUSHG {var_res.offset}")
-                self.instructions.append(f"PUSHG {var_base.offset}")
-                self.instructions.append("MUL")
-                self.instructions.append(f"STOREG {var_res.offset}")
-                
-                self.instructions.append(f"PUSHG {var_exp.offset}")
-                self.instructions.append("PUSHI 1")
-                self.instructions.append("SUB")
-                self.instructions.append(f"STOREG {var_exp.offset}")
-                
-                self.instructions.append(f"JUMP {lbl_start}")
-                self.instructions.append(f"{lbl_end}:")
-                self.instructions.append(f"PUSHG {var_res.offset}")
-                
-            elif t == "REAL":
-                var_base = self.lookup("__pow_base_r")
-                var_exp = self.lookup("__pow_exp_i") 
-                var_res = self.lookup("__pow_res_r")
-                
-                # Stack has Base, Exp
-                if r_type == "REAL":
-                    self.instructions.append("FTOI") # Converter expoente para inteiro para o loop
-                
-                self.instructions.append(f"STOREG {var_exp.offset}")
-                self.instructions.append(f"STOREG {var_base.offset}")
-                self.instructions.append("PUSHF 1.0")
-                self.instructions.append(f"STOREG {var_res.offset}")
-                
-                self.instructions.append(f"{lbl_start}:")
-                self.instructions.append(f"PUSHG {var_exp.offset}")
-                self.instructions.append("PUSHI 0")
-                self.instructions.append("SUP")
-                self.instructions.append(f"JZ {lbl_end}")
-                
-                self.instructions.append(f"PUSHG {var_res.offset}")
-                self.instructions.append(f"PUSHG {var_base.offset}")
-                self.instructions.append("FMUL")
-                self.instructions.append(f"STOREG {var_res.offset}")
-                
-                self.instructions.append(f"PUSHG {var_exp.offset}")
-                self.instructions.append("PUSHI 1")
-                self.instructions.append("SUB")
-                self.instructions.append(f"STOREG {var_exp.offset}")
-                
-                self.instructions.append(f"JUMP {lbl_start}")
-                self.instructions.append(f"{lbl_end}:")
-                self.instructions.append(f"PUSHG {var_res.offset}")
-            else:
-                 self.instructions.append("ERR \"Exponentiation not supported for this type\"")
+            var_base = self.lookup("__pow_base_i")
+            var_exp = self.lookup("__pow_exp_i")
+            var_res = self.lookup("__pow_res_i")
+            
+            self._emit_store(var_exp)
+            self._emit_store(var_base)
+            self.instructions.append("PUSHI 1")
+            self._emit_store(var_res)
+            
+            self.instructions.append(f"{lbl_start}:")
+            self._emit_push(var_exp)
+            self.instructions.append("PUSHI 0")
+            self.instructions.append("SUP")
+            self.instructions.append(f"JZ {lbl_end}")
+            
+            self._emit_push(var_res)
+            self._emit_push(var_base)
+            self.instructions.append("MUL")
+            self._emit_store(var_res)
+            
+            self._emit_push(var_exp)
+            self.instructions.append("PUSHI 1")
+            self.instructions.append("SUB")
+            self._emit_store(var_exp)
+            
+            self.instructions.append(f"JUMP {lbl_start}")
+            self.instructions.append(f"{lbl_end}:")
+            self._emit_push(var_res)
         
         # Lógicos com Curto-circuito
         elif op == ".AND.":
-            self._label_count += 1
-            lbl_false = f"scf{self._label_count}"
-            lbl_end = f"sce{self._label_count}"
+            lbl_false = self.new_label("and_false")
+            lbl_end = self.new_label("and_end")
             
-            # Já temos o resultado do Left na stack
             self.instructions.append("DUP 1")
             self.instructions.append(f"JZ {lbl_false}")
             self.instructions.append("POP 1")
@@ -594,14 +699,12 @@ class CodeGenerator:
             self.instructions.append(f"JUMP {lbl_end}")
             
             self.instructions.append(f"{lbl_false}:")
-            
             self.instructions.append(f"{lbl_end}:")
             return
 
         elif op == ".OR.": 
-            self._label_count += 1
-            lbl_true = f"sct{self._label_count}"
-            lbl_end = f"soe{self._label_count}"
+            lbl_true = self.new_label("or_true")
+            lbl_end = self.new_label("or_end")
             
             self.instructions.append("DUP 1")
             self.instructions.append("NOT")
@@ -611,7 +714,6 @@ class CodeGenerator:
             self.instructions.append(f"JUMP {lbl_end}")
             
             self.instructions.append(f"{lbl_true}:")
-            
             self.instructions.append(f"{lbl_end}:")
             return
 
@@ -635,7 +737,7 @@ class CodeGenerator:
     def generate_Mod(self, node):
         self.generate(node.left)
         self.generate(node.right)
-        self.instructions.append(f"MOD") 
+        self.instructions.append("MOD") 
 
     def generate_Function(self, node: Any) -> None:
         func_name = node.name.name if hasattr(node.name, "name") else node.name
@@ -647,12 +749,17 @@ class CodeGenerator:
         old_fp_offset = self.fp_offset
         self.locals = {}
 
-        symbols = self.semantic_info.unit_symbols.get(func_name, {})
+        symbols = self.semantic_info.unit_symbols.get(func_name, {}) if self.semantic_info else {}
         n_args = len(node.arguments)
 
         # O nome da função atua como uma variável local para o valor de retorno
-        ret_var = EnvVar(func_name, "LOCAL", -(n_args + 1), node.return_type, is_ref=False)
+        is_complex_ret = node.return_type in ("COMPLEX", "DOUBLECOMPLEX")
+        ret_offset = -(n_args + (2 if is_complex_ret else 1))
+        ret_var = EnvVar(func_name, "LOCAL", ret_offset, node.return_type, is_ref=False)
         self.locals[func_name] = ret_var
+
+        self.fp_offset = 0
+        self._setup_scratch_vars()
 
         # 1. Mapear Argumentos
         for i, arg in enumerate(node.arguments):
@@ -662,19 +769,17 @@ class CodeGenerator:
             var = EnvVar(arg_name, "LOCAL", offset, info.get("type"), is_ref=True)
             self.locals[arg_name] = var
 
-        self.fp_offset = 1
-
         # 2. Mapear Variáveis Locais
         for name, info in symbols.items():
             if name not in self.locals and not info.get("is_function") and not info.get("is_subroutine"):
                 var_type = info.get("type")
                 is_array = info.get("is_array")
-                base_size = 2 if var_type == "COMPLEX" else 1
+                base_size = 2 if var_type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION") else 1
                 size = (info.get("array_size", 1) if is_array else 1) * base_size
                 self.add_local(name, var_type, False, size)
 
-        # Alocar espaço para as variáveis locais (se houver)
-        num_locals = self.fp_offset - 1
+        # Alocar espaço para as variáveis locais
+        num_locals = self.fp_offset
         if num_locals > 0:
             self.instructions.append(f"PUSHN {num_locals}")
 
@@ -695,6 +800,9 @@ class CodeGenerator:
         old_fp_offset = self.fp_offset
         self.locals = {}
 
+        self.fp_offset = 0
+        self._setup_scratch_vars()
+
         symbols = self.semantic_info.unit_symbols.get(sub_name, {})
         n_args = len(node.arguments)
 
@@ -706,19 +814,16 @@ class CodeGenerator:
             var = EnvVar(arg_name, "LOCAL", offset, info.get("type"), is_ref=True)
             self.locals[arg_name] = var
 
-        self.fp_offset = 1
-
         # 2. Mapear Variáveis Locais (apenas variáveis locais, não argumentos nem funções/subrotinas)
         for name, info in symbols.items():
             if name not in self.locals and not info.get("is_function") and not info.get("is_subroutine"):
                 var_type = info.get("type")
                 is_array = info.get("is_array")
-                base_size = 2 if var_type == "COMPLEX" else 1
+                base_size = 2 if var_type in ("COMPLEX", "DOUBLECOMPLEX", "DOUBLEPRECISION") else 1
                 size = (info.get("array_size", 1) if is_array else 1) * base_size
                 self.add_local(name, var_type, False, size)
 
-        # Alocar espaço para as variáveis locais (se houver)
-        num_locals = self.fp_offset - 1
+        num_locals = self.fp_offset
         if num_locals > 0:
             self.instructions.append(f"PUSHN {num_locals}")
 
@@ -739,33 +844,32 @@ class CodeGenerator:
         name = node.name.name if hasattr(node.name, "name") else node.name
         
         if node.is_array:
-            # 1. Obter endereço base
-            var = self.lookup(name)
-            if var:
-                if var.scope == "GLOBAL":
-                    self.instructions.append("PUSHGP")
-                else:
-                    self.instructions.append("PUSHFP")
-                self.instructions.append(f"PUSHI {var.offset}")
-                self.instructions.append("PADD")
+            # 1. Obter endereço do elemento
+            self._generate_array_addr(node)
+            var_name = node.name.name if hasattr(node.name, "name") else node.name
+            var = self.lookup(var_name)
 
-                # 2. Calcular Offset
-                self.generate(node.expressionList[0])
-                self.instructions.append("PUSHI 1")
-                self.instructions.append("SUB")
-                
-                # 3. Somar ao base e carregar valor
-                self.instructions.append("PADD")
+            # 2. Carregar valor
+            is_complex_arr = var.type in ("COMPLEX", "DOUBLECOMPLEX")
+            if is_complex_arr:
+                self.instructions.append("DUP 1")
                 self.instructions.append("LOAD 0")
+                self.instructions.append("SWAP")
+                self.instructions.append("LOAD 1")
             else:
-                print(f"DEBUG: Array {name} not found in environment!")
+                self.instructions.append("LOAD 0")
 
         elif node.is_function:
             # 1. Reservar espaço para o retorno
-            self.instructions.append("PUSHI 0")
+            ret_type = getattr(node, "expr_type", "INTEGER")
+            if ret_type in ("COMPLEX", "DOUBLECOMPLEX"):
+                self.instructions.append("PUSHI 0")
+                self.instructions.append("PUSHI 0")
+            else:
+                self.instructions.append("PUSHI 0")
 
             # 2. Empilhar argumentos por referência
-            for arg in node.expressionList:
+            for i, arg in enumerate(node.expressionList):
                 if isinstance(arg, Variable):
                     arg_var = self.lookup(arg.name)
                     if arg_var:
@@ -777,8 +881,29 @@ class CodeGenerator:
                         self.instructions.append("PADD")
                     else:
                         self.generate(arg)
+                elif isinstance(arg, FunctionorArraysAccess) and arg.is_array:
+                    self._generate_array_addr(arg)
                 else:
-                    self.generate(arg)
+                    addr_instrs = self._get_literal_addr_instrs(arg)
+                    if addr_instrs:
+                        self.instructions.extend(addr_instrs)
+                    else:
+                        self.generate(arg)
+                        temp_name = f"__arg_temp_{i % 10}"
+                        temp_var = self.lookup(temp_name)
+                        if temp_var is None:
+                            continue
+                        arg_type = getattr(arg, "expr_type", "INTEGER")
+                        if arg_type in ("COMPLEX", "DOUBLECOMPLEX"):
+                            self.instructions.append(f"STOREL {temp_var.offset + 1}")
+                            self.instructions.append(f"STOREL {temp_var.offset}")
+                        else:
+                            self.instructions.append(f"STOREL {temp_var.offset}")
+                        
+                        # Passar endereço do temporário
+                        self.instructions.append("PUSHFP")
+                        self.instructions.append(f"PUSHI {temp_var.offset}")
+                        self.instructions.append("PADD")
 
             # 3. Chamar a função
             self.instructions.append(f"PUSHA {name}")
@@ -795,7 +920,7 @@ class CodeGenerator:
         name = node.subroutine.name if hasattr(node.subroutine, "name") else node.subroutine
 
         # 1. Empilhar argumentos por referência
-        for arg in node.arguments:
+        for i, arg in enumerate(node.arguments):
             if isinstance(arg, Variable):
                 arg_var = self.lookup(arg.name)
                 if arg_var:
@@ -807,8 +932,29 @@ class CodeGenerator:
                     self.instructions.append("PADD")
                 else:
                     self.generate(arg)
+            elif isinstance(arg, FunctionorArraysAccess) and arg.is_array:
+                self._generate_array_addr(arg)
             else:
-                self.generate(arg)
+                addr_instrs = self._get_literal_addr_instrs(arg)
+                if addr_instrs:
+                    self.instructions.extend(addr_instrs)
+                else:
+                    self.generate(arg)
+                    temp_name = f"__arg_temp_{i % 10}"
+                    temp_var = self.lookup(temp_name)
+                    if temp_var is None:
+                        continue
+                    arg_type = getattr(arg, "expr_type", "INTEGER")
+                    if arg_type in ("COMPLEX", "DOUBLECOMPLEX"):
+                        self.instructions.append(f"STOREL {temp_var.offset + 1}")
+                        self.instructions.append(f"STOREL {temp_var.offset}")
+                    else:
+                        self.instructions.append(f"STOREL {temp_var.offset}")
+                    
+                    # Passar endereço do temporário
+                    self.instructions.append("PUSHFP")
+                    self.instructions.append(f"PUSHI {temp_var.offset}")
+                    self.instructions.append("PADD")
 
         # 2. Chamar a subrotina
         self.instructions.append(f"PUSHA {name}")
@@ -825,17 +971,23 @@ class CodeGenerator:
     def emit_label(self, label):
         self.instructions.append(f"{label}:")
 
+    def get_full_label(self, label_val: Any) -> str:
+        """Retorna o nome da label prefixado pela unidade atual para evitar colisões."""
+        prefix = f"{self.curr_unit}_" if hasattr(self, 'curr_unit') and self.curr_unit else ""
+        return f"{prefix}LABEL{label_val}"
+
     def new_label(self, prefix='LABEL'):
-        name = f"{prefix.upper()}{getattr(self, 'label_counter', 0)}"
+        unit_prefix = f"{self.curr_unit}_" if hasattr(self, 'curr_unit') and self.curr_unit else ""
+        name = f"{unit_prefix}{prefix.upper()}{getattr(self, 'label_counter', 0)}"
         self.label_counter = getattr(self, 'label_counter', 0) + 1
         return name
 
-    def get_var_name(self, variable):
+    def get_var_name(self, variable: Any) -> str:
         if hasattr(variable, 'name'):
             return variable.name
         return str(variable)
 
-    def generate_expression(self, expr):
+    def generate_expression(self, expr: Expression) -> str:
         if isinstance(expr, int):
             return str(expr)
         if hasattr(expr, 'name'):
@@ -845,42 +997,48 @@ class CodeGenerator:
         self.generate(expr)
         return "" 
 
-    def generate_Goto(self, node):
-        label = f"LABEL{node.label.value}"
+    def generate_Goto(self, node:Goto) -> None:
+        label = self.get_full_label(node.label.value)
         self.emit(f"JUMP {label}")
 
-    def generate_ComputedGoto(self, node):
+    def generate_ComputedGoto(self, node:ComputedGoto) -> None:
         self.generate(node.expr)
-        num_labels = len(node.labels)
         for idx, label in enumerate(node.labels, 1):
             self.emit("DUP 0")
             self.emit(f"PUSHI {idx}")
             self.emit("EQUAL")
             next_label = self.new_label("after_case")
             self.emit(f"JZ {next_label}")
-            self.emit(f"JUMP LABEL{label.value}")
+            self.emit("POP 1")
+            self.emit(f"JUMP {self.get_full_label(label.value)}")
             self.emit_label(next_label)
         self.emit("POP 1")
 
-    def generate_AssignedGoto(self, node):
+    def generate_AssignedGoto(self, node:AssignedGoto) -> None:
         self.generate(node.var)
+        if node.labels is None:
+            self.emit("POP 1")
+            return
         for label in node.labels:
             self.emit("DUP 0")
             self.emit(f"PUSHI {label.value}")
             self.emit("EQUAL")
             next_label = self.new_label("AFTERCASE")
             self.emit(f"JZ {next_label}")
-            self.emit(f"JUMP LABEL{label.value}")
+            self.emit("POP 1")
+            self.emit(f"JUMP {self.get_full_label(label.value)}")
             self.emit_label(next_label)
         self.emit("POP 1")
 
 
-    def generate_BlockDO(self, node):
+    def generate_BlockDO(self, node:BlockDO) -> None:
         var = self.get_var_name(node.control_var)
         loop_label = self.new_label('doStart')
         end_label = self.new_label('doEnd')
         self.generate(node.init_value)
         var_obj = self.lookup(var)
+        if var_obj is None:
+            return
         prefix = "F" if var_obj.type in ("REAL", "DOUBLEPRECISION") else ""
         
         if var_obj.scope == "GLOBAL":
@@ -897,7 +1055,7 @@ class CodeGenerator:
         self.emit(f"{prefix}INFEQ")
         self.emit(f"JZ {end_label}")
 
-        for stmt in node.labeled_statements:
+        for stmt in (node.labeled_statements or []):
             self.generate(stmt)
 
         if var_obj.scope == "GLOBAL":
@@ -914,12 +1072,14 @@ class CodeGenerator:
         self.emit(f"JUMP {loop_label}")
         self.emit_label(end_label)
 
-    def generate_LabeledDO(self, node):
+    def generate_LabeledDO(self, node: LabeledDO) -> None:
         var = self.get_var_name(node.control_var)
         var_obj = self.lookup(var)
+        if var_obj is None:
+            return
         loop_start = self.new_label("loopStart")
         loop_end = self.new_label("loopEnd")
-        user_label = f"LABEL{node.label.value}"
+        user_label = self.get_full_label(node.label.value)
         prefix = "F" if var_obj.type in ("REAL", "DOUBLEPRECISION") else ""
 
         self.generate(node.control_var_init_value)
@@ -937,7 +1097,7 @@ class CodeGenerator:
         self.emit(f"{prefix}INFEQ")
         self.emit(f"JZ {loop_end}")
 
-        for stmt in node.labeled_statements:
+        for stmt in (node.labeled_statements or []):
             self.generate(stmt)
 
         if var_obj.scope == "GLOBAL":
@@ -953,12 +1113,9 @@ class CodeGenerator:
 
         self.emit(f"JUMP {loop_start}")
         self.emit_label(loop_end)
-        # Em Labeled DO, a última instrução do corpo pode ser o próprio user_label
-        # Se não for, saltamos para lá no fim do ciclo se for necessário (F77 semantics vary slightly but this is safe)
         self.emit_label(user_label) 
 
     def generate_Continue(self, node: Any) -> None:
-        # Instrução CONTINUE em Fortran 77 não faz nada além de servir como alvo de Label
         self.emit("NOP")
 
     def generate_ArithmeticIf(self, node):
@@ -974,8 +1131,8 @@ class CodeGenerator:
         self.emit(zero_instr)
         self.emit(f"{prefix}INF")
         self.emit(f"JZ {next1}")
-        self.emit("POP 1") # Limpa o resultado da expressão da stack
-        self.emit(f"JUMP LABEL{node.labeln.value}")
+        self.emit("POP 1")
+        self.emit(f"JUMP {self.get_full_label(node.labeln.value)}")
 
         self.emit_label(next1)
         self.emit("DUP 0")
@@ -983,15 +1140,15 @@ class CodeGenerator:
         self.emit("EQUAL")
         self.emit(f"JZ {next2}")
         self.emit("POP 1") # Limpa
-        self.emit(f"JUMP LABEL{node.labelz.value}")
+        self.emit(f"JUMP {self.get_full_label(node.labelz.value)}")
 
         self.emit_label(next2)
         self.emit("POP 1") # Limpa
-        self.emit(f"JUMP LABEL{node.labelp.value}")
+        self.emit(f"JUMP {self.get_full_label(node.labelp.value)}")
 
     def generate_LogicIf(self, node):
         endif_label = self.new_label("endif")
-        self.generate_expression(node.exp)
+        self.generate(node.exp)
         self.emit(f"JZ {endif_label}")
         self.generate(node.statement)
         self.emit_label(endif_label)
@@ -1001,13 +1158,15 @@ class CodeGenerator:
         end_label = self.new_label('endif')
         self.generate(node.exp)
         self.emit(f"JZ {else_label}")
-        for stmt in node.thenBody:
-            self.generate(stmt)
+        
+        self.generate(node.thenBody)
+        
         self.emit(f"JUMP {end_label}")
         self.emit_label(else_label)
+        
         if node.elseBody:
-            for stmt in node.elseBody:
-                self.generate(stmt)
+            self.generate(node.elseBody)
+            
         self.emit_label(end_label)
 
     def get_assembly(self) -> str:

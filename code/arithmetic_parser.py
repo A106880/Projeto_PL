@@ -5,6 +5,7 @@ from node_classes import (
     Continue, Return, Goto, AssignedGoto, ComputedGoto, LabeledDO, BlockDO,
     ArithmeticIf, LogicIf, BlockIf, Print, Write, Call, Label,
     FunctionorArraysAccess, Read, IntVal, RealVal, StringVal, LogicalVal,
+    DoublePrecisionVal,
 )
 from arithmetic_lexer import tokens
 
@@ -18,8 +19,8 @@ precedence = (
     ('left', 'CONCAT'),        # //
     ('left', '+', '-'),        # Adição e Subtração
     ('left', '*', '/'),        # Multiplicação e Divisão
-    ('right', 'POWER'),        # ** (Exponenciação)
     ('right', 'UMINUS'),       # Operador Unário (Negativo)
+    ('right', 'POWER'),        # ** (Exponenciação)
 )
 
 #Program -> ProgramUnit Program |
@@ -130,6 +131,8 @@ def p_val(p):
         p[0] = LogicalVal(p[1])
     elif isinstance(p[1], int):
         p[0] = IntVal(p[1])
+    elif p.slice[1].type == 'DOUBLEPRECISIONVAL':
+        p[0] = DoublePrecisionVal(p[1])
     elif isinstance(p[1], float):
         p[0] = RealVal(p[1])
     elif isinstance(p[1], str):
@@ -360,7 +363,7 @@ def p_labeledDo(p):
     p[0].lineno = p.lineno(1)
 
 def p_block_do(p):
-    '''Do : DO ID '=' Expression ',' Expression Step NewLines LabeledStatements END DO'''
+    '''Do : DO ID '=' Expression ',' Expression Step NewLines LabeledStatements ENDDO'''
     if p[7] is not None:
         p[0] = BlockDO(p[2], p[4], p[6], p[9], step = p[7])
     else:

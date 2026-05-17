@@ -16,7 +16,7 @@ tokens = (
     'WRITE', 'DO', 'MOD', 'IF', 'THEN', 'ELSE', 'ENDIF', 'GOTO', 'CONTINUE', 'SUBROUTINE', 'CALL',
     'POWER', 'CONCAT', 'AND', 'OR', 'NOT', 'EQ', 'NE', 'LT', 'LE', 'GT', 'GE',
     'EQV', 'NEQV',
-    'RETURN'
+    'RETURN', 'ENDDO'
 )
 
 reserved = {
@@ -44,7 +44,8 @@ reserved = {
     'CONTINUE': 'CONTINUE',
     'SUBROUTINE': 'SUBROUTINE',
     'CALL': 'CALL',
-    'RETURN': 'RETURN'
+    'RETURN': 'RETURN',
+    'ENDDO': 'ENDDO'
 }
 
 
@@ -109,7 +110,16 @@ def preprocess_fortran(source):
     for i, line in enumerate(lines):
         if line and line[0] in ('C', 'c', '*'):
             lines[i] = ''
-    return '\n'.join(lines)
+    source = '\n'.join(lines)
+    
+    # Normalizar palavras-chave com espaços
+    source = re.sub(r'(?i)DOUBLE\s+PRECISION', 'DOUBLEPRECISION', source)
+    source = re.sub(r'(?i)DOUBLE\s+COMPLEX', 'DOUBLECOMPLEX', source)
+    source = re.sub(r'(?i)END\s+IF', 'ENDIF', source)
+    source = re.sub(r'(?i)GO\s+TO', 'GOTO', source)
+    source = re.sub(r'(?i)END\s+DO', 'ENDDO', source)
+    
+    return source
 
 
 def t_COMMENT(t):
@@ -202,8 +212,14 @@ def t_GE(t):
     return t
 
 
+def find_column(input, token):
+    line_start = input.rfind('\n', 0, token.lexpos) + 1
+    return (token.lexpos - line_start) + 1
+
+
 def t_error(t):
-    raise LexError(f"Illegal character {t.value[0]}")
+    col = find_column(t.lexer.lexdata, t)
+    raise LexError(f"Illegal character '{t.value[0]}' at line {t.lineno}, column {col}")
 
 
 lexer = lex.lex()

@@ -11,7 +11,7 @@ from node_classes import (
     ArithmeticIf, LogicIf, BlockIf, LabeledDO, BlockDO,
     ComplexVal, DoublePrecisionComplexVal, Label,
     IntVal, RealVal, StringVal, LogicalVal, Expression,
-    Statement, Return, Continue
+    Statement, Return, Continue, DoublePrecisionVal,
 )
 
 translate: Dict[str, type] = {
@@ -152,6 +152,7 @@ class SemanticParser:
         self.errors = SemanticErrorCollector()
         self._defined_labels = {}
         self._used_labels = []
+        self._do_loops_to_check = []
         self._current_unit_name = None
         self._in_function = False
         self._in_subroutine = False
@@ -215,6 +216,7 @@ class SemanticParser:
         self._current_unit_name = get_name(node.name)
         self._defined_labels.clear()
         self._used_labels.clear()
+        self._do_loops_to_check.clear()
         self.symbols.push_scope()
         self.process_declarations(node.declarations)
         self.apply_implicit_typing() # Aplica regra I-N após declarações explícitas
@@ -235,6 +237,7 @@ class SemanticParser:
         self._in_function = True
         self._defined_labels.clear()
         self._used_labels.clear()
+        self._do_loops_to_check.clear()
         self.symbols.push_scope()
 
         seen_args = set()
@@ -271,7 +274,7 @@ class SemanticParser:
         if func_symbol:
             func_symbol["initialized"] = True
 
-        # Salvar tabela de símbolos da unidade (incluindo acesso a globais se necessário para debug)
+        # Salvar tabela de símbolos da unidade
         self.unit_symbols[func_name] = {**self.symbols._scopes[0], **self.symbols._scopes[-1]}
         self.symbols.pop_scope()
         self._in_function = False
@@ -284,6 +287,7 @@ class SemanticParser:
         self._in_subroutine = True
         self._defined_labels.clear()
         self._used_labels.clear()
+        self._do_loops_to_check.clear()
         self.symbols.push_scope()
 
         seen_args = set()
@@ -308,7 +312,6 @@ class SemanticParser:
         self.process_labeled_statements(node.labeled_statements)
         self.check_labels()
 
-        # Garantir que a subrotina fica marcada como inicializada para os chamadores
         if subroutine_symbol:
             subroutine_symbol["initialized"] = True
 
@@ -325,6 +328,26 @@ class SemanticParser:
             if label_val not in defined_values:
                 lineno = label_node.lineno if hasattr(label_node, 'lineno') else 0
                 self.errors.add_error(f"Label {label_val} referenced but not defined", lineno)
+        
+        for do_node in self._do_loops_to_check:
+            label_val = get_name(do_node.label)
+            if label_val in self._defined_labels:
+                labeled_stmt = self._defined_labels[label_val]
+                term_stmt = labeled_stmt.statement
+                
+                invalid_terminal_types = (
+                    Goto, AssignedGoto, ComputedGoto, 
+                    ArithmeticIf, Return, 
+                    LabeledDO, BlockDO, BlockIf
+                )
+                
+                if isinstance(term_stmt, invalid_terminal_types):
+                    stmt_name = type(term_stmt).__name__
+                    self.errors.add_error(
+                        f"DO loop at line {do_node.lineno} terminates on an invalid statement type: {stmt_name}. "
+                        f"Consider using a CONTINUE statement at label {label_val}.",
+                        labeled_stmt.lineno
+                    )
 
     def verify_Declaration(self, node: Declaration) -> None:
         lineno = node.lineno
@@ -348,6 +371,10 @@ class SemanticParser:
             implicit_type = self.get_implicit_type(target_name)
             self.symbols.declare(target_name, implicit_type)
             info = self.symbols.lookup(target_name)
+
+        if info is None:
+            self.errors.add_error(f"Undeclared identifier: {target_name}", lineno)
+            return
 
         if info.get("is_subroutine"):
             self.errors.add_error(f"Cannot assign to subroutine name: {target_name}", lineno)
@@ -383,9 +410,14 @@ class SemanticParser:
         if assign_type and assign_type_translated is None:
             self.errors.add_error(f"Unknown type for variable {target_name}: {assign_type}", lineno)
         elif assign_type_translated != value_type and value_type is not None:
-            self.errors.add_error(f"Type mismatch in assignment to {target_name}: expected {assign_type}, got {value_result}", lineno)
+            # Permitir cast implícito entre tipos numéricos básicos (INTEGER <-> REAL/DP)
+            numeric_types = {int, float}
+            if assign_type_translated in numeric_types and value_type in numeric_types:
+                pass
+            else:
+                self.errors.add_error(f"Type mismatch in assignment to {target_name}: expected {assign_type}, got {value_result}", lineno)
         elif value_type is None:
-            self.errors.add_error(f"Type error, assinging no type to variable of type {assign_type} ")
+            self.errors.add_error(f"Type error in assignment to {target_name}: expression has no type", lineno)
 
         self.symbols.initialize(target_name)
 
@@ -419,7 +451,7 @@ class SemanticParser:
                     info = self.symbols.lookup(name)
                 
                 self.symbols.initialize(name)
-                item.expr_type = info.get("type")
+                item.expr_type = info.get("type") if info is not None else None
             elif isinstance(item, FunctionorArraysAccess):
                 name = get_name(item.name)
                 info = self.symbols.lookup(name)
@@ -430,7 +462,7 @@ class SemanticParser:
                     info = self.symbols.lookup(name)
                 
                 self.symbols.initialize(name)
-                item.expr_type = info.get("type")
+                item.expr_type = info.get("type") if info is not None else None
                 for expr in item.expressionList:
                     self.verify_expression(expr, lineno)
 
@@ -483,7 +515,7 @@ class SemanticParser:
                 exprLis = len(node.expressionList)
                 self.errors.add_error(f"Wrong number of arguments calling function {name}; expected {exp_len}, got {exprLis}", lineno)
             
-            # Verificação de tipos dos argumentos (procurar na unidade correspondente se disponível)
+            # Verificação de tipos dos argumentos
             func_unit = self.program_units.get(name)
             for i, expr in enumerate(node.expressionList):
                 expr_type = self.verify_expression(expr, lineno)
@@ -509,7 +541,7 @@ class SemanticParser:
                 if (accessIndex > arraySize or accessIndex < 1):
                     self.errors.add_error(f"Index {accessIndex} is out of bounds for array {name} with size {arraySize}", lineno)
         else:
-            self.errors.add_error(f"{name} is not a function nor an array.")
+            self.errors.add_error(f"{name} is not a function nor an array.", lineno)
             return None
         for expr in node.expressionList:
             self.verify_expression(expr, lineno)
@@ -545,6 +577,11 @@ class SemanticParser:
                 self.errors.add_error(f"Right operand of '{op}' must be numeric, got {right_type}", lineno)
                 return None
 
+            if op == '**':
+                if left_type != "INTEGER" or right_type != "INTEGER":
+                    self.errors.add_error(f"Exponentiation (**) only supported for INTEGER**INTEGER, got {left_type}**{right_type}", lineno)
+                    return None
+
             # if op == '/':
             #     if isinstance(node.right, IntVal) and node.right.value == 0:
             #         self.errors.add_error("Division by zero", lineno)
@@ -572,7 +609,7 @@ class SemanticParser:
                 return None
             
             # Impedir comparação de ordem em complexos
-            if left_type == "COMPLEX" or right_type == "COMPLEX":
+            if left_type in ("COMPLEX", "DOUBLECOMPLEX") or right_type in ("COMPLEX", "DOUBLECOMPLEX"):
                 if op in (".LT.", ".LE.", ".GT.", ".GE.", "LT", "LE", "GT", "GE"):
                     self.errors.add_error(f"Operadores relacionais de ordem ({op}) nao sao permitidos para numeros complexos.", lineno)
 
@@ -638,7 +675,7 @@ class SemanticParser:
             if label_name in self._defined_labels:
                 self.errors.add_error(f"Duplicate label: {label_name}", node.lineno)
             else:
-                self._defined_labels[label_name] = node.label
+                self._defined_labels[label_name] = node # Stores the LabeledStatement node
         if getattr(node, 'statement', None) and node.statement:
             self.verify(node.statement)
 
@@ -656,6 +693,8 @@ class SemanticParser:
                 return "INTEGER"
             if isinstance(expr, RealVal):
                 return "REAL"
+            if isinstance(expr, DoublePrecisionVal):
+                return "DOUBLEPRECISION"
             if isinstance(expr, StringVal):
                 return "CHARACTER"
             if isinstance(expr, Variable):
@@ -667,9 +706,9 @@ class SemanticParser:
                     self.symbols.declare(name, implicit_type)
                     info = self.symbols.lookup(name)
                 
-                # Verificar se a variável foi inicializada (exceto se for argumento de função, mas por agora check básico)
+                # Verificar se a variável foi inicializada
                 if not info.get("initialized"):
-                    # Evitar erro se estivermos numa função e o nome for o da própria função (valor de retorno)
+                    # Evitar erro se estivermos numa função e o nome for o da própria função
                     if not (self._in_function and name == self._current_unit_name):
                         self.errors.add_error(f"Usage of uninitialized variable: '{name}'", current_lineno)
                 
@@ -787,14 +826,14 @@ class SemanticParser:
         for label in node.labels:
             self._used_labels.append(label)
         expr_type = self.verify_expression(node.expr, node.lineno)
-        if expr_type != "INTEGER" or expr_type!= "REAL":
+        if expr_type not in ("INTEGER", "REAL"):
             self.errors.add_error(f"Computed GOTO index (expression) must be INTEGER/REAL, got {expr_type}", node.lineno)
 
     def verify_AssignedGoto(self, node:AssignedGoto):
         var_name = node.var.name
         var_info = self.symbols.lookup(var_name)
         if not var_info:
-            self.errors.add_error(f"Assigned GOTO variable '{var_name}' is not declared", getattr(node, 'leneno', None))
+            self.errors.add_error(f"Assigned GOTO variable '{var_name}' is not declared", getattr(node, 'lineno', None))
         elif var_info.get("type") != "INTEGER":
             self.errors.add_error(f"Assigned GOTO variable '{var_name}' must be of type INTEGER, got {var_info.get('type')}",getattr(node, 'lineno', None))
         
@@ -857,6 +896,7 @@ class SemanticParser:
         
         if node.label is not None:
             self._used_labels.append(node.label)
+            self._do_loops_to_check.append(node)
     
     def verify_BlockDO(self, node:BlockDO):
         allowed_numeric_types = {"INTEGER", "REAL", "DOUBLEPRECISION"}
